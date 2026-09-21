@@ -27,7 +27,7 @@ from unknown_agent.onboarding.detect import detect_setup_state
 from unknown_agent.onboarding.flow import OnboardingOptions, run_onboarding
 from unknown_agent.onboarding.panel import launch_setup
 from unknown_agent.providers.catalog import CATALOG, catalog_payload, resolve_entry
-from unknown_agent.providers.discovery import ProviderProbeError, fetch_models, validate_profile
+from unknown_agent.providers.discovery import ModelInfo, ProviderProbeError, fetch_models, validate_profile
 from unknown_agent.ui.console import output
 from unknown_agent.ui.renderers import data_table, kv_table
 
@@ -444,19 +444,24 @@ def models_list(
             title=f"{profile_name} models ({len(rows)})",
         )
     )
-    output.print(f"[ua.muted]select with: ua models use <model-id>[/ua.muted]")
+    output.print("[ua.muted]pick one visually with: ua models use[/ua.muted]")
     raise typer.Exit(ExitCode.OK)
 
 
 @models_app.command("use")
 def models_use(
     ctx: typer.Context,
-    model: str = typer.Argument(..., help="Model id to make default."),
+    model: str | None = typer.Argument(None, help="Model id to make default. Omit to pick one visually."),
     provider: str | None = typer.Option(None, "--provider", help="Set it on another profile."),
     check: bool = typer.Option(True, "--check/--no-check", help="Verify the provider knows this model."),
     context_window: int | None = typer.Option(None, "--context", help="Override the context window."),
 ) -> None:
-    """Set the default model for a provider profile."""
+    """Set the default model - visually by default, by id when you know it.
+
+    Examples:
+      ua models use                     # open the model selector panel
+      ua models use openai/gpt-4o-mini  # set it directly (scripts, muscle memory)
+    """
 
     runtime: Runtime = ctx.obj
     loaded = runtime.load()
@@ -464,6 +469,17 @@ def models_use(
     profile = loaded.settings.providers.get(profile_name)
     if profile is None:
         raise UsageError(f"No provider profile named {profile_name!r}.")
+
+    if not model:
+        # Nobody should have to remember a model id to change their mind.  The same
+        # selector setup uses is reopened, pre-pointed at the current choice.
+        model = _pick_model_visually(runtime, profile_name, profile)
+        if not model:
+            output.print("[ua.muted]unchanged[/ua.muted]")
+            raise typer.Exit(ExitCode.OK)
+        # The list it was picked from came from the provider itself, so a second
+        # network round-trip to confirm it exists would only cost the user time.
+        check = False
 
     verified = False
     if check:
@@ -486,6 +502,62 @@ def models_use(
     else:
         output.print(f"[ua.ok]✔[/ua.ok] {profile_name} now uses [ua.kv.key]{model}[/ua.kv.key]")
     raise typer.Exit(ExitCode.OK)
+
+
+def _pick_model_visually(runtime: Runtime, profile_name: str, profile: Any) -> str:
+    """Open the model selector panel; fall back to the printed list when it cannot run."""
+
+    from unknown_agent.onboarding.panel import panel_available
+
+    entry = resolve_entry(profile.type)
+    if entry is None:
+        from unknown_agent.providers.discovery import resolve_entry_for
+
+        entry = resolve_entry_for(profile)
+
+    if not panel_available(runtime):
+        output.print(
+            "[ua.muted]no interactive terminal - naming the model explicitly:[/ua.muted] "
+            f"ua models use <model-id> --provider {profile_name}"
+        )
+        return ""
+
+    with output.status(f"fetching models from {entry.label}"):
+        rows = _models_for(runtime, profile_name, profile, refresh=True)
+    models = [
+        ModelInfo(
+            id=str(row.get("id", "")),
+            name=str(row.get("name") or row.get("id") or ""),
+            provider=entry.key,
+            context_window=row.get("context_window"),
+            max_output_tokens=row.get("max_output_tokens"),
+            supports_tools=row.get("supports_tools"),
+            supports_reasoning=bool(row.get("supports_reasoning")),
+            supports_vision=bool(row.get("supports_vision")),
+            input_cost_per_mtok=row.get("input_cost_per_mtok"),
+            output_cost_per_mtok=row.get("output_cost_per_mtok"),
+        )
+        for row in rows
+        if row.get("id")
+    ]
+    if not models:
+        raise ConfigError(
+            f"{entry.label} returned no models.",
+            hint=f"Name one directly: ua models use <model-id> --provider {profile_name}",
+        )
+
+    from unknown_agent.tui.quicksetup import run_model_picker
+
+    theme = getattr(runtime.load().settings.appearance, "theme", None)
+    return asyncio.run(
+        run_model_picker(
+            entry,
+            models,
+            current=profile.model or "",
+            source="live",
+            theme_key=None if not theme or theme == "auto" else str(theme),
+        )
+    )
 
 
 @models_app.command("refresh")

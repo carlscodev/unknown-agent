@@ -125,6 +125,7 @@ ua setup                                      # the interactive panel (recommend
 ua setup --classic                            # plain prompts, no full-screen UI
 ua setup --provider groq --api-key-env GROQ_API_KEY       # scripted, no prompts
 ua providers list                             # configured profiles, credential state, active one
+ua models use                                 # reopen the model selector panel
 ua models list -s llama                       # what this provider actually offers
 ua doctor --network                           # proves key + endpoint + model + tool calling work
 ```

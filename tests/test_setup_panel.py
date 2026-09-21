@@ -233,3 +233,42 @@ def test_launch_setup_uses_the_scripted_flow_when_flags_are_given(monkeypatch: p
     outcome = panel.launch_setup(FakeRuntime(tmp_path), scripted=OnboardingOptions(provider="groq", model="x", api_key_env="GROQ_API_KEY"))
     assert outcome.ok
     assert called["options"].provider == "groq"
+
+
+# --------------------------------------------------------------------------- #
+# changing your mind later is visual too
+# --------------------------------------------------------------------------- #
+async def test_model_picker_reopens_the_selector_alone(tmp_path: Path) -> None:
+    from unknown_agent.tui.quicksetup import ModelPickerApp
+
+    entry = resolve_entry("openrouter")
+    assert entry is not None
+    app = ModelPickerApp(entry, MODELS, current=MODELS[1].id)
+    async with app.run_test(size=(120, 40)) as pilot:
+        assert isinstance(app.screen, ModelScreen)
+        await pilot.press("enter")
+        await pilot.pause()
+    assert app.picked in {item.id for item in MODELS}
+
+
+async def test_model_picker_cancels_without_choosing(tmp_path: Path) -> None:
+    from unknown_agent.tui.quicksetup import ModelPickerApp
+
+    entry = resolve_entry("openrouter")
+    assert entry is not None
+    app = ModelPickerApp(entry, MODELS)
+    async with app.run_test(size=(120, 40)) as pilot:
+        await pilot.press("escape")
+        await pilot.pause()
+    assert app.picked == ""
+
+
+def test_models_use_without_an_id_is_allowed(tmp_path: Path) -> None:
+    """`ua models use` must be callable with no argument - that is the visual path."""
+
+    import inspect
+
+    from unknown_agent.cli.commands.providers_cmd import models_use
+
+    default = inspect.signature(models_use).parameters["model"].default
+    assert getattr(default, "default", "missing") is None

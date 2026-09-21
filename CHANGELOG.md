@@ -12,6 +12,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   automatic model fetching from the provider's models endpoint → model selector →
   review and save. Invalid keys are explained in the dialog with a retry instead of a
   raw error, and nothing is written until the save step.
+- `ua models use` with no argument now opens the same model selector panel instead of
+  requiring a model id; `/model` in the shell does too. Passing an id still works.
 - The panel is the **default path**: `ua`, `ua run`, `ua build`, `ua fix`, `ua plan` and
   `ua ask` route into it automatically when no provider is configured, instead of
   printing a hint about commands to memorise.
@@ -24,6 +26,8 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `unknown_agent.onboarding.panel.launch_setup` — one entry point that chooses the panel
   or the Rich prompt fallback (CI, `--json`, no TTY, `ua setup --classic`).
 - `ua setup --classic` to opt out of the full-screen UI.
+- `unknown_agent.tui.quicksetup.run_model_picker` — the model selector on its own, for
+  changing models after setup.
 - MCP subsystem: official SDK client (stdio/HTTP/SSE), trust ladder, tool
   bridge (`mcp.<server>.<tool>`), curated catalog, `ua mcp` management group.
 - Vision system: capability resolution with sources, image ingestion with an

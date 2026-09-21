@@ -37,6 +37,11 @@ provider's reason in plain language and the field re-focused for a retry; a prov
 accepts the key but cannot list models falls back to the curated catalog and says so;
 `Esc` at any point leaves the existing configuration untouched.
 
+Changing your mind later uses the same screen: `ua models use` with no argument (or
+`/model` in the shell) reopens the model selector with your current choice highlighted,
+so switching models never means remembering an id either. Passing an id still works for
+scripts and muscle memory.
+
 `unknown_agent/onboarding/panel.py:launch_setup` is the single entry point every caller
 uses. It picks the panel when there is a real TTY and `textual` is importable, and the
 Rich prompt flow (`onboarding/flow.py`) for CI, `--json`, `--non-interactive`, piped

@@ -900,3 +900,74 @@ async def run_setup_panel(runtime: Any = None, *, theme_key: str | None = None) 
     app = SetupApp(runtime, theme_key=theme_key)
     result = await app.run_async()
     return result or app.result
+
+
+# --------------------------------------------------------------------------- #
+# changing your mind later: the same model panel, on its own
+# --------------------------------------------------------------------------- #
+class ModelPickerApp(App[str]):
+    """Re-open just the model selector for an already-configured provider.
+
+    Switching models should not mean remembering an id and typing
+    ``ua models use meta-llama/llama-3.3-70b-instruct``.  This reuses the exact
+    screen setup uses, so the experience is the same the second time.
+    """
+
+    TITLE = "Unknown Agent · model"
+
+    BINDINGS = [Binding("ctrl+c", "cancel", "Quit", priority=True, show=False)]
+
+    def __init__(
+        self,
+        entry: ProviderEntry,
+        models: Sequence[ModelInfo],
+        *,
+        current: str = "",
+        source: str = "live",
+        theme_key: str | None = None,
+    ) -> None:
+        super().__init__()
+        self.entry = entry
+        self.models = list(models)
+        self.models_source = source
+        self.model = current
+        self.base_url = ""
+        self.theme_key = theme_key
+        self.picked = ""
+
+    def on_mount(self) -> None:
+        try:
+            apply_to_app(self, self.theme_key)
+        except Exception:  # pragma: no cover - cosmetic
+            log.debug("could not apply theme %r", self.theme_key)
+        self.push_screen(ModelScreen(self))
+
+    # ``ModelScreen`` calls back into its owner with these three hooks.
+    def show_review(self) -> None:
+        self.picked = self.model
+        self.exit(self.model)
+
+    def begin_credentials(self) -> None:
+        self.cancel()
+
+    def cancel(self) -> None:
+        self.picked = ""
+        self.exit("")
+
+    def action_cancel(self) -> None:
+        self.cancel()
+
+
+async def run_model_picker(
+    entry: ProviderEntry,
+    models: Sequence[ModelInfo],
+    *,
+    current: str = "",
+    source: str = "live",
+    theme_key: str | None = None,
+) -> str:
+    """Show the model selector alone.  Returns ``""`` when cancelled."""
+
+    app = ModelPickerApp(entry, models, current=current, source=source, theme_key=theme_key)
+    result = await app.run_async()
+    return result or app.picked

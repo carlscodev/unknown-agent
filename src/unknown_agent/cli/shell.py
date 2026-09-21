@@ -31,8 +31,8 @@ PROMPT = "ua ›"
 SLASH_HELP: tuple[tuple[str, str], ...] = (
     ("/help", "show this help"),
     ("/setup", "open the interactive setup panel (provider, key, model)"),
-    ("/provider", "show or switch the active provider profile"),
-    ("/model [id]", "show or set the default model"),
+    ("/provider", "list profiles, or switch with /provider <name>"),
+    ("/model [id]", "pick a model visually (or set one by id)"),
     ("/models", "list models the active provider offers"),
     ("/tools", "list the tools available in this session"),
     ("/verify", "run the quality gates on this project"),
@@ -212,13 +212,9 @@ class AgentShell:
                 self._run_cli(["providers", "list"])
             return True
         if command == "model":
-            if argument:
-                self._run_cli(["models", "use", argument])
-            else:
-                loaded = self.runtime.load()
-                name = loaded.settings.provider or "default"
-                profile = loaded.settings.providers.get(name)
-                output.print(f"current model: [ua.kv.key]{(profile.model if profile else '(unset)')}[/ua.kv.key]")
+            # Bare `/model` opens the selector rather than printing a value and
+            # leaving the user to go find the id themselves.
+            self._run_cli(["models", "use", *([argument] if argument else [])])
             return True
         if command == "models":
             self._run_cli(["models", "list"])
