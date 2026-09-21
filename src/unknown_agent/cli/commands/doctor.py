@@ -66,6 +66,7 @@ def doctor_command(
 
     checks: list[Check] = []
     checks.extend(_environment_checks())
+    checks.extend(_install_checks())
     loaded, config_checks = _configuration_checks(runtime)
     checks.extend(config_checks)
     checks.extend(_toolchain_checks())
@@ -180,6 +181,44 @@ def _browser_checks() -> list[Check]:
     if available:
         installed, detail = browsers_installed()
         checks.append(Check("chromium binary", "ok" if installed else "warn", detail, fix="Run `ua doctor --install-browsers`", group="browser"))
+    return checks
+
+
+def _install_checks() -> list[Check]:
+    """How this copy was installed, whether PATH can launch it, service state."""
+
+    from unknown_agent.host.install import detect_install
+
+    info = detect_install()
+    checks = [Check("install mode", "ok" if info.mode != "system" else "warn",
+                    info.mode + ("" if info.mode != "system" else " (global interpreter - consider pipx for isolation)"),
+                    fix="" if info.mode != "system" else "pipx install unknown-agent  (or scripts/install.sh)",
+                    group="install")]
+    if info.path_gap:
+        checks.append(
+            Check(
+                "launcher on PATH", "fail",
+                f"'ua' exists at {info.provided_launcher} but PATH cannot see it",
+                fix='add ~/.local/bin to PATH:  echo \'export PATH="$HOME/.local/bin:$PATH"\' >> ~/.bashrc',
+                group="install",
+            )
+        )
+    elif info.launcher_on_path:
+        checks.append(Check("launcher on PATH", "ok", info.launcher_on_path, group="install"))
+
+    from unknown_agent.host.systemd import UNITS, systemd_available, unit_status
+
+    available, why = systemd_available()
+    if available:
+        for spec in UNITS:
+            state = unit_status(spec)
+            if state.get("installed") == "yes":
+                checks.append(Check(f"service:{spec.key}", "ok", f"timer {state.get('timer', '?')}", group="install"))
+            else:
+                checks.append(Check(f"service:{spec.key}", "skip", "not installed (optional)",
+                                    fix=f"ua service install {spec.key}", group="install"))
+    else:
+        checks.append(Check("systemd", "skip", why, fix="use `ua service run-maintenance` manually or via cron", group="install"))
     return checks
 
 

@@ -218,16 +218,9 @@ def version_command(
 
 
 def _install_mode() -> str:
-    executable = sys.executable or ""
-    if "pipx" in executable:
-        return "pipx"
-    if "uv" in executable and "tools" in executable:
-        return "uv-tool"
-    if "venv" in executable or ".virtualenvs" in executable:
-        return "virtualenv"
-    if Path("/.dockerenv").exists():
-        return "container"
-    return "system"
+    from unknown_agent.host.install import detect_install
+
+    return detect_install().mode
 
 
 # --------------------------------------------------------------------------- #
@@ -346,14 +339,9 @@ def upgrade_command(
             output.print(f"  run: ua upgrade    (installed via {mode})")
         return
 
-    commands = {
-        "pipx": ["pipx", "upgrade", "unknown-agent"],
-        "uv-tool": ["uv", "tool", "upgrade", "unknown-agent"],
-        "system": [sys.executable, "-m", "pip", "install", "--upgrade", "unknown-agent"],
-        "container": [sys.executable, "-m", "pip", "install", "--upgrade", "unknown-agent"],
-        "virtualenv": [sys.executable, "-m", "pip", "install", "--upgrade", "unknown-agent"],
-    }
-    command = commands.get(mode)
+    from unknown_agent.host.install import detect_install, upgrade_command_for
+
+    command = upgrade_command_for(detect_install())
     if not command:
         raise UsageError(f"Cannot determine how to upgrade a {mode} installation.", hint="Run: pip install --upgrade unknown-agent")
     if not yes and not runtime.assume_yes:

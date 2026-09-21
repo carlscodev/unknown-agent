@@ -6,6 +6,31 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- MCP subsystem: official SDK client (stdio/HTTP/SSE), trust ladder, tool
+  bridge (`mcp.<server>.<tool>`), curated catalog, `ua mcp` management group.
+- Vision system: capability resolution with sources, image ingestion with an
+  exfiltration guard, fallback-profile routing, per-dialect provider encoding
+  (OpenAI/Anthropic/Ollama), `analyze_image`/`compare_images`/
+  `screenshot_analyze` tools, `ua vision` group.
+- Computer-use abstraction: closed action vocabulary, driver seam with a
+  Playwright-backed implementation, safety ladder (budgets, host allowlist,
+  denied keys, fail-closed confirmation, JSONL journal), observe/act tools.
+- Advanced tools: `architecture_map`, `dependency_audit`, `repo_health`,
+  `app_scaffold`, `doc_query`, `plan_review`, `mcp_discover`, `skill_distill`,
+  `ui_validate`.
+- Install & delivery: product-grade `scripts/install.sh` (pipx > uv > managed
+  venv, verify, PATH repair, idempotent, `--uninstall`), install-mode detection
+  with receipts (`host/install.py`), origin-aware `ua upgrade`.
+- `ua service` group with a user-level systemd maintenance timer
+  (`host/systemd.py`): weekly prune/rotate/update-check; cron and Task
+  Scheduler equivalents printed on non-systemd platforms.
+- Doctor groups: `install`, `mcp`, `vision`.
+- Onboarding step 8: vision capability fact + opt-in MCP starter servers.
+- GitHub delivery: CI (test matrix + installer smoke + build check), release
+  workflow with `SHA256SUMS` over all assets, `CONTRIBUTING.md`, `SECURITY.md`,
+  secure PAT push guide (`docs/publishing.md`).
+
 ## [1.0.0] - 2026-09-20
 
 ### Added

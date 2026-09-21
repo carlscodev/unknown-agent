@@ -42,30 +42,61 @@ plan ──▶ act ──▶ observe ──▶ verify ──▶ (loop until the 
 
 Linux is the primary platform; macOS and Windows are supported.
 
-```bash
-# Recommended: isolated install, no system Python pollution
-pipx install "unknown-agent[all]"     # or: uv tool install "unknown-agent[all]"
-
-# Browser validation (Chromium is the default path)
-ua doctor --install-browsers
-
-ua init            # create .unknown/ in the current repository
-ua doctor          # verify environment, credentials, toolchain
-```
-
-Other install paths:
+### One command (recommended, isolated)
 
 ```bash
-pip install --user "unknown-agent[all]"       # plain pip
-python3 -m venv .venv && .venv/bin/pip install "unknown-agent[all]"   # venv
+pipx install "git+https://github.com/OWNER/REPO"        # or: uv tool install "git+https://github.com/OWNER/REPO"
+ua setup                                                 # guided first-run onboarding
 ```
 
-Upgrade and removal are first-class:
+`pipx` gives the CLI its own virtualenv, a `ua` command on PATH, and one-command
+upgrades — the cleanest way to run a Python CLI tool without touching your
+system Python. `uv tool` is equivalent and faster.
+
+### Shell installer (auto-detects the best strategy)
+
+Download it, **read it**, then run it — never pipe remote code straight into a shell:
+
+```bash
+curl -fsSLO https://raw.githubusercontent.com/OWNER/REPO/main/scripts/install.sh
+less install.sh          # inspect what you are about to execute
+sh install.sh            # picks pipx > uv > managed venv, verifies, offers setup
+```
+
+The installer never uses sudo, never writes outside `$HOME`, prints every
+action, is idempotent, and supports `--yes`, `--with-service`, `--with-setup`,
+`--from-pypi`, and `--uninstall`. On releases, a `SHA256SUMS` file lets you
+verify the script before running:
+
+```bash
+sha256sum -c SHA256SUMS --ignore-missing
+```
+
+### Other paths
+
+```bash
+pip install --user "git+https://github.com/OWNER/REPO"                  # plain pip
+python3 -m venv .venv && .venv/bin/pip install "unknown-agent[all]"     # your own venv
+py -m pip install --user pipx && pipx install "git+https://github.com/OWNER/REPO"   # Windows (PowerShell)
+```
+
+### After install
+
+```bash
+ua                              # first run drops you into guided setup automatically
+ua doctor                       # verify environment, install, credentials, toolchain
+ua doctor --install-browsers    # optional: Chromium for browser validation
+ua service install maintenance  # optional (Linux): weekly housekeeping via a systemd *user* timer
+```
+
+### Upgrade, repair, removal — first-class
 
 ```bash
 ua upgrade --check          # is a newer release available?
-ua upgrade                  # upgrade through the same installer that installed you
-pipx uninstall unknown-agent  # clean removal; user state lives in XDG dirs
+ua upgrade                  # upgrades through the same installer that installed you
+ua doctor                   # detects broken PATH, wrong install mode, stale services
+sh install.sh --uninstall   # clean removal (keeps your config/state, says where they live)
+pipx uninstall unknown-agent   # equivalent for pipx installs
 ```
 
 ## Quickstart

@@ -224,6 +224,7 @@ def _register_commands() -> None:
         plugins,
         providers_cmd,
         runs,
+        service,
         sessions,
         skills,
         tools,
@@ -257,6 +258,7 @@ def _register_commands() -> None:
     app.command("version", rich_help_panel="Project")(misc.version_command)
     app.command("upgrade", rich_help_panel="Project")(misc.upgrade_command)
     app.command("log", rich_help_panel="Project")(misc.log_command)
+    app.add_typer(service.app, name="service", help="Optional background maintenance: systemd user units, manual runs.", rich_help_panel="Project")
     app.command("completion", rich_help_panel="Project")(misc.completion_command)
     app.add_typer(inspect.app, name="inspect", help="Repository intelligence: stack, commands, layout, risks.", rich_help_panel="Project")
 
