@@ -2,39 +2,44 @@
 
 Design notes
 ------------
-* **Auth** — two ways in: the owner token printed by ``ua web`` (or
-  ``ua web --show-token``), or device pairing: the browser shows a 6-digit code,
-  the terminal approves it with ``ua approve device <code>``.  Sessions are
-  HttpOnly cookies; the state file is the IPC channel (see :mod:`web.auth`).
-* **Chat** — one WebSocket per browser; the server resolves the *active* provider
-  profile from the same settings the TUI/CLI use, so ``/provider`` and ``/model``
-  here take effect everywhere.  Streaming goes through the provider's own
-  ``stream()`` (OpenAI/Anthropic SSE, Ollama chunks) exactly like the TUI path.
-* **Static** — the built Vue 3 app lives in ``web/static`` and is served with an
-  SPA fallback; ``/api`` is the only non-SPA prefix.
+* **Auth** — owner token printed by ``ua web`` (or ``ua web --show-token``), or
+  device pairing: the browser shows a 6-digit code, the terminal approves it with
+  ``ua approve device <code>``.  Sessions are HttpOnly cookies; the shared 0600
+  auth file is the IPC channel (see :mod:`web.auth`).
+* **Chat** — one WebSocket per browser; the active provider profile resolves from
+  the same settings the TUI/CLI use.  Streaming goes through the provider's own
+  ``stream()``.  Generation is cancellable (``{"type": "stop"}`` / ``POST /api/stop``).
+* **Attachments** — uploads land in ``<data>/web_uploads``; text/PDF content is
+  extracted into the prompt, images ride ``Message.images`` (native vision parts),
+  everything else is referenced by path for agent tooling.
+* **Dashboard** — providers, models, agent policy, MCP servers, file options and
+  usage, all persisted through the real settings file.
+* **Static** — the built Vue 3 app in ``web/static`` with an SPA fallback.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from unknown_agent.config.loader import load_settings, save_settings
-from unknown_agent.config.models import Settings
+from unknown_agent.config.models import McpServerConfig, ProviderConfig, Settings
 from unknown_agent.config.paths import AppPaths
 from unknown_agent.core.models import Message
 from unknown_agent.observability.logging import get_logger
 from unknown_agent.providers.base import ModelRequest
 from unknown_agent.tui.provider_status import active_profile_name
 from unknown_agent.version import __version__
+from unknown_agent.web.attachments import AttachmentStore
 from unknown_agent.web.auth import WebAuthStore
 
 log = get_logger(__name__)
@@ -45,6 +50,7 @@ CHAT_SYSTEM = (
     "practical. Answer in the user's language. When code is requested, use fenced blocks."
 )
 HISTORY_LIMIT = 60
+DEFAULT_FILES_OPTS = {"max_upload_mb": 25, "auto_extract": True}
 
 Emit = Callable[[dict[str, Any]], Awaitable[None]]
 
@@ -55,11 +61,22 @@ class _Body(BaseModel):
     text: str = ""
     name: str = ""
     id: str = ""
+    attachments: list[str] = []
+    type: str = ""
+    model: str = ""
+    base_url: str | None = None
+    api_key: str | None = None
+    enabled: bool = True
+    command: str | None = None
+    args: list[str] = []
+    url: str | None = None
+    mode: str | None = None
+    max_steps: int | None = None
+    reasoning: str | None = None
+    max_upload_mb: int | None = None
+    auto_extract: bool | None = None
 
 
-# --------------------------------------------------------------------------- #
-# rate limiting (tiny, in-memory; good enough for a personal panel)
-# --------------------------------------------------------------------------- #
 class _Limiter:
     def __init__(self, max_hits: int = 10, window_s: float = 60.0) -> None:
         self.max_hits = max_hits
@@ -77,17 +94,49 @@ class _Limiter:
         return True
 
 
-# --------------------------------------------------------------------------- #
-# app factory
-# --------------------------------------------------------------------------- #
+def _read_json(path: Path, fallback: Any) -> Any:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return fallback
+
+
+def _write_json(path: Path, payload: Any) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+
 def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None = None) -> FastAPI:
     app = FastAPI(title="Unknown Agent", version=__version__, docs_url=None, redoc_url=None)
     limiter = _Limiter()
     history: dict[str, list[dict[str, str]]] = {}
+    running: dict[str, asyncio.Task[None]] = {}
+    files_opts_path = paths.config_dir / "web_files.json"
+    usage_path = paths.data_dir / "web_usage.json"
+    uploads = AttachmentStore(paths.data_dir / "web_uploads")
 
     # -- helpers ------------------------------------------------------------ #
     def _settings() -> Settings:
         return load_settings(paths=paths).settings
+
+    def _files_opts() -> dict[str, Any]:
+        opts = dict(DEFAULT_FILES_OPTS)
+        opts.update(_read_json(files_opts_path, {}))
+        return opts
+
+    def _usage() -> dict[str, Any]:
+        data = _read_json(usage_path, {})
+        data.setdefault("requests", 0)
+        data.setdefault("chars", 0)
+        data.setdefault("uploads", 0)
+        data.setdefault("commands", 0)
+        return data
+
+    def _bump_usage(**delta: int) -> None:
+        data = _usage()
+        for key, val in delta.items():
+            data[key] = int(data.get(key, 0)) + val
+        _write_json(usage_path, data)
 
     def _client_ip(request: Request) -> str:
         fwd = request.headers.get("x-forwarded-for")
@@ -102,30 +151,19 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
 
     def _set_cookie(response: JSONResponse, sid: str) -> None:
         response.set_cookie(
-            COOKIE,
-            sid,
-            max_age=60 * 60 * 24 * 30,
-            httponly=True,
-            samesite="lax",
-            path="/",
+            COOKIE, sid, max_age=60 * 60 * 24 * 30, httponly=True, samesite="lax", path="/"
         )
 
     def _unauth() -> JSONResponse:
         return JSONResponse({"error": "authentication required"}, status_code=401)
 
+    def _owner(request: Request) -> tuple[str, dict[str, Any]] | None:
+        pair = _session_of(request)
+        return pair if pair and pair[1].get("role") == "owner" else None
+
     def _profile_pair(settings: Settings) -> tuple[str, Any]:
         name = active_profile_name(settings)
         return name, settings.providers.get(name)
-
-    def _skill_set(settings: Settings) -> Any:
-        """The resolved skill pack — the same one the CLI/TUI agent runs with."""
-        try:
-            from unknown_agent.skills.loader import resolve_skills
-
-            return resolve_skills(settings, user_dir=paths.user_skills_dir)
-        except Exception:
-            log.debug("web: skill pack resolve failed", exc_info=True)
-            return None
 
     def _provider_view(settings: Settings) -> dict[str, Any]:
         active_name, active = _profile_pair(settings)
@@ -138,19 +176,24 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
                     "name": name,
                     "type": getattr(p, "type", "") or "",
                     "model": getattr(p, "model", "") or "",
+                    "base_url": getattr(p, "base_url", None),
                     "active": name == active_name,
                 }
                 for name, p in (settings.providers or {}).items()
             ],
         }
 
-    # -- chat core ----------------------------------------------------------- #
-    async def _emit_command_result(emit: Emit, content: str) -> None:
-        await emit({"type": "message", "role": "assistant", "content": content, "command": True})
-        await emit({"type": "done", "content": content})
+    def _skill_set(settings: Settings) -> Any:
+        try:
+            from unknown_agent.skills.loader import resolve_skills
 
+            return resolve_skills(settings, user_dir=paths.user_skills_dir)
+        except Exception:
+            log.debug("web: skill pack resolve failed", exc_info=True)
+            return None
+
+    # -- chat core ----------------------------------------------------------- #
     async def _run_command(sid: str, text: str, emit: Emit) -> bool:
-        """Handle slash commands.  Returns True when the text was a command."""
         if not text.startswith("/"):
             return False
         parts = text[1:].split(None, 1)
@@ -160,17 +203,18 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         content = ""
 
         if name in {"help", "?"}:
-            rows = [
-                "/help — this list",
-                "/status — provider, model, version",
-                "/pack — active skill pack and its skills",
-                "/providers — list configured profiles",
-                "/provider <name> — switch active profile",
-                "/models — list models the active provider offers",
-                "/model <id> — set the active model",
-                "/clear — forget this conversation",
-            ]
-            content = "\n".join(rows)
+            content = "\n".join(
+                [
+                    "/help — this list",
+                    "/status — provider, model, version",
+                    "/pack — active skill pack and its skills",
+                    "/providers — list configured profiles",
+                    "/provider <name> — switch active profile",
+                    "/models — list models the active provider offers",
+                    "/model <id> — set the active model",
+                    "/clear — forget this conversation",
+                ]
+            )
         elif name == "pack":
             skillset = _skill_set(settings)
             if skillset is None or not skillset.skills:
@@ -206,42 +250,69 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             if not arg:
                 content = "usage: /model <id>"
             else:
-                pname, profile = _profile_pair(settings)
+                _, profile = _profile_pair(settings)
                 if profile is None:
                     content = "no active profile — run ua setup"
                 else:
                     profile.model = arg
                     save_settings(settings, paths.user_config_file)
-                    content = f"model for '{pname}' is now '{arg}'"
+                    content = f"model for the active profile is now '{arg}'"
         elif name == "clear":
             history.pop(sid, None)
             content = "conversation cleared"
         else:
             content = f"unknown command '/{name}' — /help lists what this panel understands"
 
-        await _emit_command_result(emit, content)
+        _bump_usage(commands=1)
+        await emit({"type": "message", "role": "assistant", "content": content, "command": True})
+        await emit({"type": "done", "content": content})
         return True
 
-    async def _list_models(settings: Settings) -> str:
-        from unknown_agent.providers.catalog import known_model_ids
-        from unknown_agent.providers.discovery import fetch_models
+    async def _model_ids(pname: str, profile: Any) -> tuple[list[str], str]:
+        """Live model list when the gateway answers, catalog otherwise.
 
+        Mirrors the TUI call shape: ``fetch_models`` wants the resolved catalog
+        *entry* plus the resolved secret, not the raw ``ProviderConfig``.
+        """
+        from unknown_agent.config.secrets import resolve_secret
+        from unknown_agent.providers.catalog import known_model_ids
+        from unknown_agent.providers.discovery import fetch_models, resolve_entry_for
+
+        try:
+            entry = resolve_entry_for(profile)
+        except Exception:
+            entry = None
+        if entry is None:
+            configured = getattr(profile, "model", "") or ""
+            return ([configured] if configured else []), "none"
+        api_key = resolve_secret(
+            getattr(profile, "api_key", None), key=f"providers.{pname}.api_key"
+        )
+        try:
+            fetched = await asyncio.wait_for(
+                fetch_models(
+                    entry, api_key=api_key, base_url=getattr(profile, "base_url", None)
+                ),
+                timeout=8.0,
+            )
+            return [m.id for m in fetched], "live"
+        except Exception:
+            return list(known_model_ids(entry)), "catalog"
+
+    async def _list_models(settings: Settings) -> str:
         pname, profile = _profile_pair(settings)
         if profile is None:
             return "no active profile — run ua setup"
-        try:
-            models = await asyncio.wait_for(fetch_models(profile), timeout=8.0)
-            rows = [m.id for m in models][:40]
-            src = "live"
-        except Exception:
-            rows = list(known_model_ids(pname))[:40]
-            src = "catalog (provider unreachable)"
-        return "\n".join(rows) or f"no models listed ({src})"
+        rows, _src = await _model_ids(pname, profile)
+        return "\n".join(rows[:40]) or "no models listed"
 
-    async def _run_chat(sid: str, text: str, emit: Emit) -> None:
+    async def _run_chat(
+        sid: str, text: str, emit: Emit, attach_ids: list[str] | None = None
+    ) -> None:
         if await _run_command(sid, text, emit):
             return
         settings = _settings()
+        opts = _files_opts()
         pname, profile = _profile_pair(settings)
         if profile is None:
             await emit(
@@ -259,10 +330,27 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             await emit({"type": "error", "error": f"provider attach failed: {exc}"})
             return
 
+        # -- attachments become real model context ------------------------- #
+        blocks: list[str] = []
+        images: list[str] = []
+        for aid in attach_ids or []:
+            meta = uploads.get(aid)
+            if meta is None:
+                continue
+            if meta["kind"] == "image":
+                try:
+                    images.append(uploads.data_url(meta))
+                except OSError:
+                    blocks.append(f"[attached image: {meta['name']}] — unreadable file.")
+            else:
+                blocks.append(uploads.context_block(meta, auto_extract=bool(opts["auto_extract"])))
+
+        user_text = text
+        if blocks:
+            user_text = f"{text}\n\n" + "\n\n".join(blocks)
+
         stored = history.setdefault(sid, [])
-        stored.append({"role": "user", "content": text})
-        # The chat runs with the product's skill pack: the same craft guidance the
-        # CLI/TUI agent receives, budgeted for this task.
+        stored.append({"role": "user", "content": user_text})
         system = CHAT_SYSTEM
         skillset = _skill_set(settings)
         if skillset is not None:
@@ -273,7 +361,11 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             if guidance:
                 system = f"{CHAT_SYSTEM}\n\n{guidance}"
         messages = [Message(role="system", content=system)]
-        messages += [Message(role=m["role"], content=m["content"]) for m in stored[-HISTORY_LIMIT:]]
+        messages += [
+            Message(role=m["role"], content=m["content"]) for m in stored[-HISTORY_LIMIT:]
+        ]
+        if images:
+            messages[-1] = Message(role="user", content=user_text, images=images)
         model = getattr(profile, "model", "") or provider.model
         request = ModelRequest(
             messages=messages,
@@ -300,6 +392,11 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
                     raise RuntimeError(response.error)
                 full = response.content or ""
                 await emit({"type": "delta", "delta": full})
+        except asyncio.CancelledError:
+            if full:
+                stored.append({"role": "assistant", "content": full})
+            await emit({"type": "stopped", "content": full})
+            raise
         except Exception as exc:
             log.debug("web chat error", exc_info=True)
             if full:
@@ -307,7 +404,31 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             await emit({"type": "error", "error": str(exc)})
             return
         stored.append({"role": "assistant", "content": full})
+        _bump_usage(requests=1, chars=len(full))
         await emit({"type": "done", "content": full, "model": model, "provider": pname})
+
+    def _spawn(sid: str, text: str, emit: Emit, attach_ids: list[str] | None) -> asyncio.Task[None]:
+        async def _wrap() -> None:
+            try:
+                await _run_chat(sid, text, emit, attach_ids)
+            except asyncio.CancelledError:
+                return
+            except Exception:
+                # Client went away mid-stream (browser closed, stop pressed):
+                # the cancel-path emit can then raise; never log a traceback for it.
+                log.debug("web chat task ended", exc_info=True)
+
+        task = asyncio.create_task(_wrap())
+        running[sid] = task
+        task.add_done_callback(lambda _t: running.pop(sid, None))
+        return task
+
+    def _stop(sid: str) -> bool:
+        task = running.get(sid)
+        if task is None or task.done():
+            return False
+        task.cancel()
+        return True
 
     # -- auth endpoints ------------------------------------------------------ #
     @app.get("/api/health")
@@ -365,24 +486,18 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         _set_cookie(resp, sid)
         return resp
 
-    # -- owner-only management ------------------------------------------------ #
-    def _owner(request: Request) -> tuple[str, dict[str, Any]] | None:
-        pair = _session_of(request)
-        if pair and pair[1].get("role") == "owner":
-            return pair
-        return None
-
+    # -- status / chat -------------------------------------------------------- #
     @app.get("/api/status")
     async def status(request: Request) -> JSONResponse:
-        pair = _session_of(request)
-        if not pair:
+        if not _session_of(request):
             return _unauth()
-        return JSONResponse(_provider_view(_settings()))
+        view = _provider_view(_settings())
+        view["files"] = _files_opts()
+        return JSONResponse(view)
 
     @app.get("/api/commands")
     async def commands(request: Request) -> JSONResponse:
-        pair = _session_of(request)
-        if not pair:
+        if not _session_of(request):
             return _unauth()
         return JSONResponse(
             [
@@ -399,28 +514,13 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
 
     @app.get("/api/models")
     async def models(request: Request) -> JSONResponse:
-        pair = _session_of(request)
-        if not pair:
+        if not _session_of(request):
             return _unauth()
-        from unknown_agent.providers.catalog import known_model_ids
-        from unknown_agent.providers.discovery import fetch_models
-
         pname, profile = _profile_pair(_settings())
         if profile is None:
             return JSONResponse({"models": [], "source": "none"})
-        try:
-            fetched = await asyncio.wait_for(fetch_models(profile), timeout=8.0)
-            return JSONResponse(
-                {"models": [m.id for m in fetched][:80], "source": "live", "provider": pname}
-            )
-        except Exception:
-            return JSONResponse(
-                {
-                    "models": list(known_model_ids(pname))[:80],
-                    "source": "catalog",
-                    "provider": pname,
-                }
-            )
+        rows, source = await _model_ids(pname, profile)
+        return JSONResponse({"models": rows[:80], "source": source, "provider": pname})
 
     @app.post("/api/provider")
     async def set_provider(request: Request, body: _Body) -> JSONResponse:
@@ -445,6 +545,236 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         save_settings(settings, paths.user_config_file)
         return JSONResponse(_provider_view(settings))
 
+    @app.post("/api/stop")
+    async def stop(request: Request) -> JSONResponse:
+        pair = _session_of(request)
+        if not pair:
+            return _unauth()
+        return JSONResponse({"stopped": _stop(pair[0])})
+
+    @app.post("/api/upload")
+    async def upload(request: Request, file: UploadFile = File(...)) -> JSONResponse:
+        pair = _session_of(request)
+        if not pair:
+            return _unauth()
+        opts = _files_opts()
+        cap = int(opts["max_upload_mb"]) * 1024 * 1024
+        blob = await file.read()
+        if len(blob) > cap:
+            return JSONResponse(
+                {"error": f"file exceeds the {opts['max_upload_mb']} MB limit"}, status_code=413
+            )
+        meta = uploads.save(blob, file.filename or "upload.bin")
+        _bump_usage(uploads=1)
+        return JSONResponse(
+            {"id": meta["id"], "name": meta["name"], "kind": meta["kind"],
+             "size": meta["size"], "size_human": meta["size_human"]}
+        )
+
+    @app.post("/api/chat")
+    async def chat(request: Request, body: _Body) -> JSONResponse:
+        pair = _session_of(request)
+        if not pair:
+            return _unauth()
+        sid, _ = pair
+        text = (body.text or "").strip()
+        if not text:
+            return JSONResponse({"error": "empty message"}, status_code=400)
+        out: dict[str, Any] = {"deltas": [], "content": "", "error": None}
+
+        async def emit(msg: dict[str, Any]) -> None:
+            if msg.get("type") == "delta":
+                out["deltas"].append(msg.get("delta", ""))
+            elif msg.get("type") in {"message", "done", "stopped"}:
+                out["content"] = msg.get("content", "") or out["content"]
+            elif msg.get("type") == "error":
+                out["error"] = msg.get("error")
+
+        await _run_chat(sid, text, emit, body.attachments)
+        if out["error"] and not out["content"]:
+            return JSONResponse({"error": out["error"]}, status_code=502)
+        return JSONResponse(out)
+
+    @app.websocket("/api/ws")
+    async def ws(websocket: WebSocket) -> None:
+        sid = websocket.cookies.get(COOKIE, "")
+        if not auth.session(sid):
+            await websocket.close(code=4401)
+            return
+        await websocket.accept()
+        try:
+            while True:
+                payload = await websocket.receive_json()
+                kind = str(payload.get("type") or "chat")
+                if kind == "stop":
+                    if _stop(sid):
+                        await websocket.send_json({"type": "stopped"})
+                    continue
+                text = str(payload.get("text") or "").strip()
+                if not text:
+                    continue
+
+                async def emit(msg: dict[str, Any]) -> None:
+                    await websocket.send_json(msg)
+
+                _spawn(sid, text, emit, payload.get("attachments") or [])
+        except WebSocketDisconnect:
+            _stop(sid)
+            return
+        except Exception:
+            log.debug("web socket error", exc_info=True)
+            _stop(sid)
+
+    # -- dashboard ------------------------------------------------------------- #
+    @app.get("/api/dashboard")
+    async def dashboard(request: Request) -> JSONResponse:
+        if not _owner(request):
+            return _unauth()
+        settings = _settings()
+        skillset = _skill_set(settings)
+        return JSONResponse(
+            {
+                "providers": _provider_view(settings)["providers"],
+                "active": _provider_view(settings)["active"],
+                "agent": {
+                    "mode": settings.agent.mode,
+                    "max_steps": settings.agent.max_steps,
+                    "reasoning": getattr(settings.reasoning, "default_mode", "") or "",
+                },
+                "mcp": {
+                    "enabled": settings.mcp.enabled,
+                    "servers": [
+                        {
+                            "name": name,
+                            "enabled": srv.enabled,
+                            "transport": srv.transport,
+                            "command": srv.command,
+                            "args": list(srv.args),
+                            "url": getattr(srv, "url", None),
+                        }
+                        for name, srv in (settings.mcp.servers or {}).items()
+                    ],
+                },
+                "files": _files_opts(),
+                "usage": _usage(),
+                "skills": skillset.ids() if skillset else [],
+                "devices": {
+                    "pending": auth.pending(),
+                    "devices": auth.devices(),
+                },
+            }
+        )
+
+    @app.post("/api/dashboard/provider")
+    async def dash_provider(request: Request, body: _Body) -> JSONResponse:
+        if not _owner(request):
+            return _unauth()
+        name = (body.name or "").strip().lower()
+        if not name or not name.replace("-", "").replace("_", "").isalnum():
+            return JSONResponse({"error": "invalid profile name"}, status_code=400)
+        settings = _settings()
+        try:
+            profile = ProviderConfig(
+                type=body.type or "openai-compatible",
+                model=body.model or "auto",
+                base_url=body.base_url or None,
+                api_key=body.api_key or None,
+            )
+        except Exception as exc:
+            return JSONResponse({"error": str(exc)[:200]}, status_code=400)
+        settings.providers[name] = profile
+        save_settings(settings, paths.user_config_file)
+        return JSONResponse(_provider_view(settings))
+
+    @app.post("/api/dashboard/provider/remove")
+    async def dash_provider_remove(request: Request, body: _Body) -> JSONResponse:
+        if not _owner(request):
+            return _unauth()
+        settings = _settings()
+        name = (body.name or "").strip()
+        if name not in (settings.providers or {}) or len(settings.providers) <= 1:
+            return JSONResponse({"error": "cannot remove that profile"}, status_code=400)
+        del settings.providers[name]
+        if settings.provider == name:
+            settings.provider = next(iter(settings.providers))
+        save_settings(settings, paths.user_config_file)
+        return JSONResponse(_provider_view(settings))
+
+    @app.post("/api/dashboard/agent")
+    async def dash_agent(request: Request, body: _Body) -> JSONResponse:
+        if not _owner(request):
+            return _unauth()
+        settings = _settings()
+        if body.mode in {"auto", "plan", "react"}:
+            settings.agent.mode = body.mode
+        if body.max_steps is not None and 1 <= body.max_steps <= 200:
+            settings.agent.max_steps = int(body.max_steps)
+        if body.reasoning:
+            settings.reasoning.default_mode = body.reasoning
+        save_settings(settings, paths.user_config_file)
+        return JSONResponse(
+            {
+                "mode": settings.agent.mode,
+                "max_steps": settings.agent.max_steps,
+                "reasoning": settings.reasoning.default_mode,
+            }
+        )
+
+    @app.post("/api/dashboard/mcp/add")
+    async def dash_mcp_add(request: Request, body: _Body) -> JSONResponse:
+        if not _owner(request):
+            return _unauth()
+        name = (body.name or "").strip().lower()
+        if not name or not name.replace("-", "").replace("_", "").isalnum():
+            return JSONResponse({"error": "invalid server name"}, status_code=400)
+        if not (body.command or body.url):
+            return JSONResponse({"error": "command or url required"}, status_code=400)
+        settings = _settings()
+        settings.mcp.servers[name] = McpServerConfig(
+            enabled=bool(body.enabled),
+            transport="http" if body.url and not body.command else "stdio",
+            command=body.command or None,
+            args=list(body.args),
+            url=body.url or None,
+        )
+        save_settings(settings, paths.user_config_file)
+        return JSONResponse({"ok": True, "servers": list(settings.mcp.servers)})
+
+    @app.post("/api/dashboard/mcp/toggle")
+    async def dash_mcp_toggle(request: Request, body: _Body) -> JSONResponse:
+        if not _owner(request):
+            return _unauth()
+        settings = _settings()
+        srv = (settings.mcp.servers or {}).get((body.name or "").strip())
+        if srv is None:
+            return JSONResponse({"error": "unknown server"}, status_code=404)
+        srv.enabled = bool(body.enabled)
+        save_settings(settings, paths.user_config_file)
+        return JSONResponse({"ok": True, "enabled": srv.enabled})
+
+    @app.post("/api/dashboard/mcp/remove")
+    async def dash_mcp_remove(request: Request, body: _Body) -> JSONResponse:
+        if not _owner(request):
+            return _unauth()
+        settings = _settings()
+        if (body.name or "").strip() not in (settings.mcp.servers or {}):
+            return JSONResponse({"error": "unknown server"}, status_code=404)
+        del settings.mcp.servers[(body.name or "").strip()]
+        save_settings(settings, paths.user_config_file)
+        return JSONResponse({"ok": True})
+
+    @app.post("/api/dashboard/files")
+    async def dash_files(request: Request, body: _Body) -> JSONResponse:
+        if not _owner(request):
+            return _unauth()
+        opts = _files_opts()
+        if body.max_upload_mb is not None and 1 <= body.max_upload_mb <= 200:
+            opts["max_upload_mb"] = int(body.max_upload_mb)
+        if body.auto_extract is not None:
+            opts["auto_extract"] = bool(body.auto_extract)
+        _write_json(files_opts_path, opts)
+        return JSONResponse(opts)
+
     @app.get("/api/devices")
     async def devices(request: Request) -> JSONResponse:
         if not _owner(request):
@@ -465,55 +795,6 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             return _unauth()
         return JSONResponse({"token": auth.rotate_owner_token()})
 
-    # -- chat ------------------------------------------------------------------ #
-    @app.post("/api/chat")
-    async def chat(request: Request, body: _Body) -> JSONResponse:
-        pair = _session_of(request)
-        if not pair:
-            return _unauth()
-        sid, _ = pair
-        text = (body.text or "").strip()
-        if not text:
-            return JSONResponse({"error": "empty message"}, status_code=400)
-        out: dict[str, Any] = {"deltas": [], "content": "", "error": None}
-
-        async def emit(msg: dict[str, Any]) -> None:
-            if msg.get("type") == "delta":
-                out["deltas"].append(msg.get("delta", ""))
-            elif msg.get("type") in {"message", "done"}:
-                out["content"] = msg.get("content", "") or out["content"]
-            elif msg.get("type") == "error":
-                out["error"] = msg.get("error")
-
-        await _run_chat(sid, text, emit)
-        if out["error"] and not out["content"]:
-            return JSONResponse({"error": out["error"]}, status_code=502)
-        return JSONResponse(out)
-
-    @app.websocket("/api/ws")
-    async def ws(websocket: WebSocket) -> None:
-        sid = websocket.cookies.get(COOKIE, "")
-        sess = auth.session(sid)
-        if not sess:
-            await websocket.close(code=4401)
-            return
-        await websocket.accept()
-        try:
-            while True:
-                payload = await websocket.receive_json()
-                text = str(payload.get("text") or "").strip()
-                if not text:
-                    continue
-
-                async def emit(msg: dict[str, Any]) -> None:
-                    await websocket.send_json(msg)
-
-                await _run_chat(sid, text, emit)
-        except WebSocketDisconnect:
-            return
-        except Exception:
-            log.debug("web socket error", exc_info=True)
-
     # -- static / SPA ----------------------------------------------------------- #
     resolved_static = Path(static_dir) if static_dir else None
     if resolved_static and (resolved_static / "index.html").exists():
@@ -528,7 +809,6 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             candidate = (resolved_static / full_path).resolve()
             if (
                 full_path
-                and not full_path.startswith("api")
                 and candidate.is_relative_to(resolved_static.resolve())
                 and candidate.is_file()
             ):

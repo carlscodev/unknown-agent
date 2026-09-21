@@ -287,3 +287,152 @@ async def test_model_switch_persists(env) -> None:
         # Persisted to the same config file the TUI/CLI read.
         text = (env.paths.user_config_file).read_text(encoding="utf-8")
         assert "unli-auto" in text
+
+
+# --------------------------------------------------------------------------- #
+# v1.3: uploads, attachments, stop, dashboard
+# --------------------------------------------------------------------------- #
+async def test_upload_text_is_extracted_into_context(env, monkeypatch) -> None:
+    captured = {}
+
+    class StubProvider:
+        supports_streaming = False
+        model = "stub-1"
+        temperature = 0.2
+        max_output_tokens = 512
+
+        async def complete(self, request):
+            captured["messages"] = request.messages
+            return SimpleNamespace(content="got it", error=None)
+
+    import unknown_agent.providers.registry as registry
+
+    monkeypatch.setattr(registry, "build_provider", lambda *_, **__: StubProvider())
+
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post(
+            "/api/upload",
+            files={"file": ("notes.txt", b"the vault code is 4242", "text/plain")},
+        )
+        assert r.status_code == 200
+        meta = r.json()
+        assert meta["kind"] == "text"
+
+        r = await c.post(
+            "/api/chat", json={"text": "what is in the file?", "attachments": [meta["id"]]}
+        )
+        assert r.status_code == 200
+        user_msgs = [m for m in captured["messages"] if m.role == "user"]
+        assert "the vault code is 4242" in user_msgs[-1].content
+
+
+async def test_upload_image_becomes_vision_part(env, monkeypatch) -> None:
+    captured = {}
+
+    class StubProvider:
+        supports_streaming = False
+        model = "stub-1"
+        temperature = 0.2
+        max_output_tokens = 512
+
+        async def complete(self, request):
+            captured["messages"] = request.messages
+            return SimpleNamespace(content="nice image", error=None)
+
+    import unknown_agent.providers.registry as registry
+
+    monkeypatch.setattr(registry, "build_provider", lambda *_, **__: StubProvider())
+
+    png = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c626001000000ffff03000006000557bfabd40000000049454e44ae426082"
+    )
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post("/api/upload", files={"file": ("shot.png", png, "image/png")})
+        meta = r.json()
+        assert meta["kind"] == "image"
+        r = await c.post("/api/chat", json={"text": "describe", "attachments": [meta["id"]]})
+        assert r.status_code == 200
+        last_user = [m for m in captured["messages"] if m.role == "user"][-1]
+        assert last_user.images and last_user.images[0].startswith("data:image/png;base64,")
+
+
+async def test_upload_over_cap_rejected(env) -> None:
+    async with _client(env) as c:
+        await _owner_client(c)
+        # shrink the cap through the dashboard, then exceed it
+        r = await c.post("/api/dashboard/files", json={"max_upload_mb": 1})
+        assert r.status_code == 200
+        big = b"x" * (1024 * 1024 + 10)
+        r = await c.post(
+            "/api/upload", files={"file": ("big.bin", big, "application/octet-stream")}
+        )
+        assert r.status_code == 413
+
+
+async def test_stop_cancels_generation(env, monkeypatch) -> None:
+    class SlowProvider:
+        supports_streaming = True
+        model = "stub-1"
+        temperature = 0.2
+        max_output_tokens = 512
+
+        async def stream(self, request):
+            for i in range(200):
+                import asyncio as _a
+
+                await _a.sleep(0.05)
+                yield SimpleNamespace(delta=f"tok{i} ", error=None, usage=None, finish_reason=None)
+
+    import unknown_agent.providers.registry as registry
+
+    monkeypatch.setattr(registry, "build_provider", lambda *_, **__: SlowProvider())
+
+    with TestClient(env.app) as client:
+        r = client.post("/api/auth/login", json={"token": OWNER})
+        assert r.status_code == 200
+        with client.websocket_connect("/api/ws") as ws:
+            ws.send_json({"text": "long one"})
+            first = ws.receive_json()
+            assert first["type"] == "delta"
+            ws.send_json({"type": "stop"})
+            kinds = []
+            for _ in range(10):
+                m = ws.receive_json()
+                kinds.append(m["type"])
+                if "stopped" in kinds:
+                    break
+            assert "stopped" in kinds
+
+
+async def test_dashboard_mcp_and_providers(env) -> None:
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post(
+            "/api/dashboard/mcp/add",
+            json={"name": "fs", "command": "uvx", "args": ["mcp-server-fs"]},
+        )
+        assert r.status_code == 200
+
+        r = await c.get("/api/dashboard")
+        srv = next(s for s in r.json()["mcp"]["servers"] if s["name"] == "fs")
+        assert srv["enabled"] is True
+
+        r = await c.post("/api/dashboard/mcp/toggle", json={"name": "fs", "enabled": False})
+        assert r.json()["enabled"] is False
+        # persisted to the real config file
+        text = env.paths.user_config_file.read_text(encoding="utf-8")
+        assert "mcp" in text and "fs" in text
+
+        r = await c.post(
+            "/api/dashboard/provider",
+            json={"name": "backup", "type": "openai-compatible", "model": "gpt-4o-mini"},
+        )
+        assert r.status_code == 200
+        r = await c.post("/api/dashboard/provider/remove", json={"name": "backup"})
+        assert r.status_code == 200
+
+        r = await c.post("/api/dashboard/agent", json={"mode": "plan", "max_steps": 21})
+        assert r.json()["mode"] == "plan" and r.json()["max_steps"] == 21

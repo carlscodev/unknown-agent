@@ -1,13 +1,14 @@
 <script setup>
 import { onBeforeUnmount, ref } from "vue";
 import { api } from "../api.js";
+import { Icon } from "../icons.js";
 
 const emit = defineEmits(["authed"]);
-const mode = ref("token"); // token | pair
+const mode = ref("token");
 const token = ref("");
 const error = ref("");
 const code = ref("");
-const polling = ref(null);
+let polling = null;
 
 async function submitToken() {
   error.value = "";
@@ -15,7 +16,7 @@ async function submitToken() {
     await api.login(token.value.trim());
     emit("authed", { authenticated: true, role: "owner" });
   } catch (e) {
-    error.value = e.status === 429 ? "Too many attempts. Wait a minute." : "Invalid token.";
+    error.value = e.status === 429 ? "Too many attempts — wait a minute." : "Invalid token.";
   }
 }
 
@@ -25,15 +26,15 @@ async function startPairing() {
   try {
     const r = await api.requestDevice();
     code.value = r.code;
-    polling.value = setInterval(async () => {
+    polling = setInterval(async () => {
       try {
         const claim = await api.claimDevice(code.value);
         if (claim.status === "approved") {
-          clearInterval(polling.value);
+          clearInterval(polling);
           emit("authed", { authenticated: true, role: "device" });
         }
       } catch {
-        /* still pending */
+        /* pending */
       }
     }, 1500);
   } catch (e) {
@@ -42,42 +43,40 @@ async function startPairing() {
   }
 }
 
-onBeforeUnmount(() => polling.value && clearInterval(polling.value));
+onBeforeUnmount(() => polling && clearInterval(polling));
 </script>
 
 <template>
-  <div class="login-wrap">
-    <div class="login-card">
-      <div class="wordmark">Unknown<span>&nbsp;Agent</span></div>
-      <span class="micro">Control panel</span>
+  <div class="login">
+    <div class="card">
+      <div class="mark"><Icon name="logo" :size="30" /></div>
+      <div class="wordmark">Unknown Agent</div>
+      <p class="tag">Hyperagent console — chat, providers, tools and runs in one surface.</p>
 
       <template v-if="mode === 'token'">
-        <label class="micro" for="tok">Access token</label>
-        <input
-          id="tok"
-          v-model.trim="token"
-          type="password"
-          autocomplete="off"
-          spellcheck="false"
-          placeholder="paste the token from ua web"
-          @keyup.enter="submitToken"
-        />
-        <div class="error-line">{{ error }}</div>
-        <button class="primary" :disabled="!token" @click="submitToken">Enter</button>
-        <div class="login-alt">
-          no token? <a @click="startPairing">request access from this device</a>
+        <div class="field">
+          <label for="tok">Access token</label>
+          <input
+            id="tok"
+            v-model.trim="token"
+            type="password"
+            autocomplete="off"
+            spellcheck="false"
+            placeholder="from ua web on the host"
+            @keyup.enter="submitToken"
+          />
         </div>
+        <div class="err">{{ error }}</div>
+        <button class="primary" :disabled="!token" @click="submitToken">Enter console</button>
+        <div class="alt">no token? <a @click="startPairing">request access from this device</a></div>
       </template>
 
       <template v-else>
-        <div class="pair-code">{{ code || "······" }}</div>
-        <div class="pair-wait"><span class="pulse" /> waiting for approval</div>
-        <p class="pair-hint">
-          On the machine running the panel:<br />
-          <code>ua approve device {{ code || "&lt;code&gt;" }}</code>
-        </p>
-        <div class="error-line">{{ error }}</div>
-        <div class="login-alt"><a @click="mode = 'token'">back to token</a></div>
+        <div class="pair-code num">{{ code || "······" }}</div>
+        <div class="pair-wait"><span class="pulse" style="width:6px;height:6px;border-radius:50%;background:var(--acc)" /> waiting for terminal approval</div>
+        <p class="pair-hint">On the host machine run<br /><code>ua approve device {{ code || "…" }}</code></p>
+        <div class="err">{{ error }}</div>
+        <div class="alt"><a @click="mode = 'token'">back to token</a></div>
       </template>
     </div>
   </div>

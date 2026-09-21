@@ -6,6 +6,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-09-21
+
+### Rebuilt — the web panel is now a full product console
+
+Complete redesign and feature pass of the browser surface (Vue 3 + Vite frontend,
+FastAPI + WebSocket backend), rebuilt as a premium, mobile-first product console in
+the terminal's own design language: near-black layered surfaces, one slate-blue
+accent, hairline borders, mono for data, zero emoji.
+
+- **Chat workspace**: integrated composer with attach menu (image, video, audio,
+  PDF, document), provider + model selectors beside the input, Send and Stop as one
+  cohesive control bar; slash palette; history recall; prompt drafts.
+- **Live generation monitor**: a rolling streaming window above the composer shows
+  the model output in small animated increments, tied to the real provider stream;
+  the finished answer lands in the transcript.
+- **Console dashboard**: overview bento, provider profile management (add/remove,
+  any catalog type or custom OpenAI-compatible), agent policy (mode, max steps,
+  reasoning), MCP servers (add/toggle/remove, persisted to config), file-handling
+  options, usage stats, and security (token rotation, device revocation).
+- **Real attachments**: uploads persist under the data dir; text/PDF content is
+  extracted into the prompt, images ride `Message.images` as native vision parts on
+  both provider dialects, everything else is referenced by path for agent tooling.
+- **Cancellable generation**: `Stop` (and `POST /api/stop`) cancels the running
+  provider stream per session.
+- **Fixes**: `/api/models` now resolves the catalog entry + secret like the TUI does
+  (was 500ing on the fallback path); composer Enter now runs an exactly-typed
+  command instead of looping in the palette.
+
+### QA
+
+Chromium-verified at 390/820/1440 widths: login, chat, streaming, dashboard — no
+horizontal overflow at any viewport; screenshots in `web/qa/`. Suite: 693 passed.
+
 ## [1.2.1] - 2026-09-21
 
 ### Added — the web chat runs with the skill pack
