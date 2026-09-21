@@ -355,11 +355,12 @@ class ModelSelector(ChooserScreen):
                     current=model_id == current,
                 )
             )
-        caption = (
-            f"{len(choices)} models from the live provider list"
-            if source == "live"
-            else f"{len(choices)} models from the bundled catalog — the live list was unavailable"
-        )
+        if source == "live":
+            caption = f"{len(choices)} models from the live provider list"
+        elif source == "manual":
+            caption = "No catalog was available — the current model is shown; type any model id to switch"
+        else:
+            caption = f"{len(choices)} models from the bundled catalog — the live list was unavailable"
         super().__init__("Model", choices, tokens=tokens, caption=caption, placeholder="Filter models…")
 
 

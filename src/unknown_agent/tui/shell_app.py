@@ -1048,6 +1048,31 @@ class TUIAppShell(App[None]):
         profile = self._profile()
         entry = resolve_entry(getattr(profile, "type", "") or self.provider_status.state.provider)
 
+        # For custom openai-compatible gateways the catalog has no entry;
+        # fabricate one from the profile so listing can be attempted with the
+        # correct base URL and compatibility.  This keeps UNLI-style generic
+        # endpoints from being stuck on a single-model dead end.
+        if entry is None and profile is not None:
+            try:
+                from unknown_agent.providers.discovery import resolve_entry_for as _resolve_for_profile
+
+                entry = _resolve_for_profile(profile)
+            except Exception:
+                entry = None
+
+        # Extract explicit compatibility for the fetch, falling back to the
+        # entry protocol so UNLI and generic custom gateways use the right
+        # header style and listing path.
+        compat: str | None = None
+        if profile is not None:
+            extra = getattr(profile, "extra", {}) or {}
+            if isinstance(extra, dict) and extra.get("compatibility"):
+                compat = str(extra["compatibility"])
+            elif entry is not None and getattr(entry, "protocol", "") == "anthropic":
+                compat = "anthropic"
+            elif entry is not None and getattr(entry, "protocol", "") == "openai":
+                compat = "openai"
+
         # A completed health check already holds the authoritative list, whatever the
         # profile's dialect. Check it before anything else so the freshest data wins.
         report = self.provider_status.last_report
@@ -1059,24 +1084,55 @@ class TUIAppShell(App[None]):
             # A generic dialect (``openai-compatible``) maps to no catalog vendor, and
             # with no health report there is nothing to enumerate. Offer at least the
             # configured model so the switcher is never an empty dead end.
-            current = getattr(profile, "model", "") or self.provider_status.state.model
-            known = [ModelInfo(id=current, name=current, provider="custom")] if current else []
+            current = getattr(profile, "model", "") or self.provider_status.state.model if profile is not None else self.provider_status.state.model
+            known = [ModelInfo(id=current, name=current, provider="custom")] if current and current != "—" else []
             return known, "catalog"
+
+        # Some synthetic entries (generic openai-compatible with no base URL)
+        # declare ``model_listing == 'none'`` — fetching would trivially return
+        # an empty list.  Skip the network round trip and go straight to the
+        # curated/current fallback so the switcher is never empty.
+        if getattr(entry, "model_listing", "") == "none":
+            catalog_models = [ModelInfo(id=mid, name=mid, provider=entry.key) for mid in known_model_ids(entry)]
+            if catalog_models:
+                return catalog_models, "catalog"
+            current = getattr(profile, "model", "") or self.provider_status.state.model if profile is not None else ""
+            # ``current`` may be the placeholder ``"—"`` when no model is set;
+            # still return at least one entry so the UI is not a dead end.
+            if current and current != "—" and current.strip():
+                return [ModelInfo(id=current, name=current, provider=entry.key)], "catalog"
+            # No model is configured at all — offer the catalog's default if any,
+            # otherwise an empty manual bucket (the selector will handle typed input).
+            return catalog_models or [], "catalog"
 
         try:
             from unknown_agent.providers.discovery import fetch_models
 
             key = await asyncio.to_thread(ProviderStatusController._resolve_key, profile, entry)
-            models = list(
-                await asyncio.wait_for(
-                    fetch_models(entry, api_key=key, base_url=getattr(profile, "base_url", None)), timeout=15
-                )
-            )
+            # Be tolerant of test doubles that don't yet accept ``compatibility``.
+            try:
+                c = fetch_models(entry, api_key=key, base_url=getattr(profile, "base_url", None), compatibility=compat)
+            except TypeError as te:
+                if "compatibility" in str(te):
+                    c = fetch_models(entry, api_key=key, base_url=getattr(profile, "base_url", None))
+                else:
+                    raise
+            models = list(await asyncio.wait_for(c, timeout=15))
+            if not models:
+                raise ValueError("empty model list")
             self.usage.learn_pricing_from_models(models)
             return models, "live"
         except Exception as exc:  # noqa: BLE001 - degrade to the catalog, never block
             log.debug("live model listing failed: %s", exc)
-            return [ModelInfo(id=mid, name=mid, provider=entry.key) for mid in known_model_ids(entry)], "catalog"
+            catalog_models = [ModelInfo(id=mid, name=mid, provider=entry.key) for mid in known_model_ids(entry)]
+            if catalog_models:
+                return catalog_models, "catalog"
+            # No curated list and live failed: return the current model as a
+            # manual entry so the selector can still offer a typed fallback.
+            current = getattr(profile, "model", "") or self.provider_status.state.model if profile is not None else ""
+            if current and current != "—":
+                return [ModelInfo(id=current, name=current, provider=entry.key)], "manual"
+            return [], "manual"
 
     def _reload_settings(self) -> None:
         with ErrorBoundary(self, region="config reload"):

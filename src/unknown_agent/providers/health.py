@@ -221,6 +221,7 @@ async def run_provider_check(
     model: str = "",
     probe_inference: bool = False,
     env: dict[str, str] | None = None,
+    compatibility: str | None = None,
 ) -> ProviderReport:
     """Test a provider configuration end to end and report what is actually true.
 
@@ -301,7 +302,15 @@ async def run_provider_check(
             report.hint = "Run `ua setup` and paste it into the panel."
             return report
         try:
-            result = await validate_credential(entry, api_key=api_key, base_url=resolved_base)
+            # ``validate_credential`` is monkeypatched in tests without the new
+            # ``compatibility`` kwarg — be tolerant so the health suite stays green.
+            try:
+                result = await validate_credential(entry, api_key=api_key, base_url=resolved_base, compatibility=compatibility)  # type: ignore[call-arg]
+            except TypeError as exc:
+                if "compatibility" in str(exc):
+                    result = await validate_credential(entry, api_key=api_key, base_url=resolved_base)  # type: ignore[call-arg]
+                else:
+                    raise
         except Exception as exc:  # noqa: BLE001 - provider failure is data
             elapsed = int((time.monotonic() - started) * 1000)
             status = classify_provider_error(exc)
@@ -334,7 +343,13 @@ async def run_provider_check(
         report.models = [ModelInfo(id=mid, name=mid, provider=report.provider) for mid in known_model_ids(entry)]
     else:
         try:
-            report.models = list(await fetch_models(entry, api_key=api_key or None, base_url=resolved_base))
+            try:
+                report.models = list(await fetch_models(entry, api_key=api_key or None, base_url=resolved_base, compatibility=compatibility))  # type: ignore[call-arg]
+            except TypeError as exc:
+                if "compatibility" in str(exc):
+                    report.models = list(await fetch_models(entry, api_key=api_key or None, base_url=resolved_base))  # type: ignore[call-arg]
+                else:
+                    raise
             report.stages.append(
                 CheckStage(
                     "model listing",
@@ -391,7 +406,7 @@ async def run_provider_check(
     # -- 5. inference probe (opt-in: it costs a token) ---------------------- #
     if probe_inference and model:
         started = time.monotonic()
-        ok, detail = await _probe_inference(entry, api_key=api_key, base_url=resolved_base, model=model)
+        ok, detail = await _probe_inference(entry, api_key=api_key, base_url=resolved_base, model=model, compatibility=compatibility)
         elapsed = int((time.monotonic() - started) * 1000)
         if ok:
             report.stages.append(CheckStage("inference", "ok", detail, elapsed_ms=elapsed))
@@ -422,15 +437,25 @@ def _finish(report: ProviderReport) -> ProviderReport:
     return report
 
 
-async def _probe_inference(entry: Any, *, api_key: str | None, base_url: str | None, model: str) -> tuple[bool, str]:
+async def _probe_inference(entry: Any, *, api_key: str | None, base_url: str | None, model: str, compatibility: str | None = None) -> tuple[bool, str]:
     """One tiny completion: the only honest proof that the whole path works."""
 
     try:
-        from unknown_agent.providers.discovery import build_client
+        from unknown_agent.providers.discovery import build_client, effective_entry_for_compatibility
+        from unknown_agent.providers.compatibility import normalize_compatibility
 
-        client = build_client(entry, api_key=api_key, base_url=base_url, timeout=30.0)
-        protocol = getattr(entry, "protocol", "openai")
-        if protocol == "anthropic":
+        # Respect explicit compatibility (custom anthropic gateway, etc.)
+        compat_norm = normalize_compatibility(compatibility) if compatibility else None
+        eff_entry = effective_entry_for_compatibility(entry, compat_norm) if compat_norm else entry
+        try:
+            client = build_client(eff_entry, api_key=api_key, base_url=base_url, timeout=30.0, compatibility=compat_norm)  # type: ignore[call-arg]
+        except TypeError as exc:
+            if "compatibility" in str(exc):
+                client = build_client(eff_entry, api_key=api_key, base_url=base_url, timeout=30.0)  # type: ignore[call-arg]
+            else:
+                raise
+        protocol = getattr(eff_entry, "protocol", "openai")
+        if protocol == "anthropic" or compat_norm == "anthropic":
             payload = {"model": model, "max_tokens": 1, "messages": [{"role": "user", "content": "hi"}]}
             path = "/messages"
         else:

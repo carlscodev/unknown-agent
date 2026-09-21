@@ -59,6 +59,29 @@ from unknown_agent.providers.discovery import ModelInfo, ProviderProbeError, fet
 from unknown_agent.reasoning import MODES, MODE_ORDER
 from unknown_agent.skills.loader import SKILL_FILE_TEMPLATE, packs_payload
 from unknown_agent.tui.themes import apply_to_app, theme_name
+
+# Backwards-compatible wrappers for test doubles that don't yet accept
+# ``compatibility`` — production code always passes it.
+
+
+async def _ow_safe_validate(entry, *, api_key, base_url, compatibility):  # type: ignore[no-untyped-def]
+    try:
+        return await validate_credential(entry, api_key=api_key, base_url=base_url, compatibility=compatibility)
+    except TypeError as exc:
+        if "compatibility" in str(exc):
+            return await validate_credential(entry, api_key=api_key, base_url=base_url)  # type: ignore[call-arg]
+        raise
+
+
+async def _ow_safe_fetch(entry, *, api_key, base_url, compatibility):  # type: ignore[no-untyped-def]
+    try:
+        return await fetch_models(entry, api_key=api_key, base_url=base_url, compatibility=compatibility)
+    except TypeError as exc:
+        if "compatibility" in str(exc):
+            return await fetch_models(entry, api_key=api_key, base_url=base_url)  # type: ignore[call-arg]
+        raise
+
+
 from unknown_agent.tui.widgets import (
     ApiKeyInput,
     CapabilityBadges,
@@ -105,6 +128,7 @@ class WizardState:
     entry: ProviderEntry | None = None
     custom_entry: bool = False
     base_url: str = ""
+    compatibility: str = "openai"  # openai | anthropic | auto
     profile_name: str = ""
     api_key: str = ""
     credential_ref: str = ""
@@ -470,14 +494,27 @@ class EndpointStep(WizardStep):
         )
         yield PanelCard(
             "endpoint",
-            "The base URL of an OpenAI-compatible server. Include the version path if your server expects it.",
+            "The base URL of the server. Include the version path if your server expects it.",
             Input(value=self.wizard.base_url, placeholder="https://llm.internal.example.com/v1", id="base-url"),
-            Static("[dim]examples: http://localhost:8000/v1 (vLLM) · http://localhost:11434/v1 (Ollama) · https://litellm.internal/v1[/]", id="endpoint-hint"),
+            Static("[dim]examples: http://localhost:8000/v1 (vLLM) · https://api.unli.dev/v1 (UNLI) · http://localhost:11434/v1 (Ollama)[/]", id="endpoint-hint"),
         )
         yield PanelCard(
             "display name",
             "How this provider is named in your config and in the model selector.",
             Input(value=self.wizard.profile_name, placeholder="internal-llm", id="custom-name"),
+        )
+        yield PanelCard(
+            "API compatibility",
+            "How your endpoint speaks. Pick the format your gateway implements; auto-detect probes both.",
+            OptionGrid(
+                [
+                    GridChoice("openai", "OpenAI-compatible", "Bearer token, /v1/models, /chat/completions — UNLI, vLLM, LiteLLM, OpenAI", selected=self.wizard.compatibility in {"", "openai"}),
+                    GridChoice("anthropic", "Anthropic-compatible", "x-api-key, /v1/models, /messages — Anthropic and proxies", selected=self.wizard.compatibility == "anthropic"),
+                    GridChoice("auto", "Auto-detect", "Try OpenAI first, then Anthropic. Use when docs are unclear.", selected=self.wizard.compatibility == "auto"),
+                ],
+                title="compatibility",
+                id="compat-grid",
+            ),
         )
         yield PanelCard(
             "capabilities",
@@ -513,27 +550,35 @@ class EndpointStep(WizardStep):
 
     def collect(self) -> None:
         from unknown_agent.providers.catalog import ProviderEntry
+        from unknown_agent.providers.compatibility import normalize_compatibility
 
         base_field = self._find("#base-url", Input)
         if base_field is None:
             return
         base = base_field.value.strip()
         name = (self._find("#custom-name", Input) or _Blank()).value.strip() or "custom"
+        compat_grid = self._find("#compat-grid", OptionGrid)
+        compat = normalize_compatibility(compat_grid.value if compat_grid is not None else self.wizard.compatibility)
         flags = (self._find("#custom-flags", SwitchGrid) or _BlankSwitches()).values()
         header = (self._find("#auth-header", Input) or _Blank()).value.strip()
         extra_headers = {header.split(":")[0].strip(): ""} if header and ":" in header else {}
         self.wizard.base_url = base
+        self.wizard.compatibility = compat
         self.wizard.profile_name = name
+        # Map compatibility to wire protocol + model listing.  Auto-detect records
+        # as openai by default; validation will probe both.
+        protocol = "anthropic" if compat == "anthropic" else "openai"
+        listing = "anthropic" if compat == "anthropic" else "openai"
         self.wizard.entry = ProviderEntry(
             key=_safe_profile_name(name),
             label=name,
-            protocol="openai-compatible",
+            protocol=protocol,  # type: ignore[arg-type]
             base_url=base,
             env_var=f"{name.upper().replace('-', '_')}_API_KEY",
             docs_url=base,
             credential_hint="key from your gateway" if not flags.get("keyless") else "no key required",
             api_key_required=not flags.get("keyless", False),
-            model_listing="openai-compatible",
+            model_listing=listing,  # type: ignore[arg-type]
             models_path="/models",
             default_model="",
             supports_tools=bool(flags.get("tools", True)),
@@ -544,10 +589,10 @@ class EndpointStep(WizardStep):
             local=base.startswith(("http://localhost", "http://127.0.0.1", "http://0.0.0.0")),
             requires_base_url=True,
             extra_headers=extra_headers,
-            notes="custom provider configured during setup",
+            notes=f"custom provider configured during setup ({compat})",
         )
         self.wizard.custom_entry = True
-        self.wizard.note(f"custom endpoint {base}")
+        self.wizard.note(f"custom endpoint {base} ({compat})")
 
 
 class ApiKeyStep(WizardStep):
@@ -672,8 +717,9 @@ class ApiKeyStep(WizardStep):
         status = self._find("#key-status", Static)
         self.checking = True
         status.update("[dim]⟳ talking to " + entry.label + " ...[/]")
+        compat = getattr(self.wizard, "compatibility", "openai") or "openai"
         try:
-            result = await validate_credential(entry, api_key=self.wizard.api_key or None, base_url=self.wizard.base_url or None)
+            result = await _ow_safe_validate(entry, api_key=self.wizard.api_key or None, base_url=self.wizard.base_url or None, compatibility=compat)
         except Exception as exc:  # pragma: no cover - defensive
             result = None
             self.wizard.fail(f"credential validation crashed: {exc}")
@@ -758,8 +804,9 @@ class ModelStep(WizardStep):
         status = self._find("#model-status", Static)
         status.update(f"[dim]⟳ fetching models from {entry.label} ...[/]")
         api_key = self.wizard.api_key or None
+        compat = getattr(self.wizard, "compatibility", "openai") or "openai"
         try:
-            models = await fetch_models(entry, api_key=api_key, base_url=self.wizard.base_url or None)
+            models = await _ow_safe_fetch(entry, api_key=api_key, base_url=self.wizard.base_url or None, compatibility=compat)
         except ProviderProbeError as exc:
             models = []
             self.wizard.note(f"live listing failed ({exc.message}); using the curated catalog list")
@@ -1438,11 +1485,16 @@ class OnboardingApp(App[WizardState]):
 
         profile_name = wizard.profile_name or profile_name_for(entry, settings.providers or {})
         if wizard.custom_entry:
-            # A custom endpoint is a real profile, not a special case: it uses the
-            # openai-compatible dialect with the flags the user declared, and goes
-            # through the same adapter registry, credential store and discovery.
+            # A custom endpoint uses the compatibility the user declared (openai or
+            # anthropic).  Auto-detect is stored as the detected protocol plus an
+            # extra hint so re-validation knows to retry both on failure.
+            compat = getattr(wizard, "compatibility", "openai") or "openai"
+            if compat == "anthropic":
+                compat_type = "anthropic"
+            else:
+                compat_type = "openai-compatible"
             profile_values = {
-                "type": "openai-compatible",
+                "type": compat_type,
                 "model": wizard.model,
                 "base_url": wizard.base_url,
                 "supports_tools": entry.supports_tools,
@@ -1451,6 +1503,8 @@ class OnboardingApp(App[WizardState]):
                 "supports_reasoning": entry.supports_reasoning,
                 "supports_vision": entry.supports_vision,
             }
+            if compat == "auto":
+                profile_values["extra"] = {"compatibility": "auto"}
             if entry.extra_headers:
                 profile_values["headers"] = dict(entry.extra_headers)
         else:

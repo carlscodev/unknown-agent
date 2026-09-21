@@ -174,11 +174,25 @@ class ProviderStatusController:
             from unknown_agent.providers.catalog import resolve_entry
 
             entry = resolve_entry(provider_type)
+            if entry is None and profile is not None:
+                try:
+                    from unknown_agent.providers.discovery import resolve_entry_for as _resolve_for_profile
+
+                    entry = _resolve_for_profile(profile)
+                except Exception:
+                    entry = None
             if entry is not None:
-                state.provider_label = entry.label
-                mode = resolve_auth_mode(entry, getattr(profile, "auth_mode", "") or None)
+                # For custom entries the label may be the safe slug; show it.
+                state.provider_label = getattr(entry, "label", "") or profile_name
+                try:
+                    mode = resolve_auth_mode(entry, getattr(profile, "auth_mode", "") or None)
+                except Exception:
+                    mode = resolve_auth_mode(entry, None)
                 state.auth_mode = mode.key
                 state.auth_mode_label = mode.label
+            elif profile is not None:
+                # Custom profile with no catalog entry — still show something
+                state.provider_label = profile_name
             if not profile_name or state.model == "—":
                 state.status = ProviderStatus.NOT_CONFIGURED
                 state.message = "No provider configured yet."
@@ -238,6 +252,7 @@ class ProviderStatusController:
         """Resolve config → catalog entry → credential, then run the real check."""
 
         from unknown_agent.providers.catalog import resolve_entry
+        from unknown_agent.providers.discovery import resolve_entry_for as _resolve_for_profile
 
         settings = self.settings
         profile_name = active_profile_name(settings)
@@ -249,7 +264,17 @@ class ProviderStatusController:
             report.hint = "Press ctrl+p → 'setup'."
             return report
 
+        # Prefer the catalog entry, but fall back to a synthetic entry for
+        # custom openai-compatible gateways (e.g. UNLI via custom URL, generic
+        # self-hosted endpoints).  The synthetic path respects explicit
+        # ``extra.compatibility`` so an anthropic-compatible custom gateway is
+        # not mis-identified as openai.
         entry = resolve_entry(getattr(profile, "type", "") or profile_name)
+        if entry is None:
+            try:
+                entry = _resolve_for_profile(profile)
+            except Exception:
+                entry = None
         if entry is None:
             report = ProviderReport(provider=profile_name, status=ProviderStatus.SETUP_REQUIRED)
             report.message = f"Unknown provider type {getattr(profile, 'type', '')!r}."
@@ -258,6 +283,28 @@ class ProviderStatusController:
 
         mode = resolve_auth_mode(entry, getattr(profile, "auth_mode", "") or None)
         api_key = await asyncio.to_thread(self._resolve_key, profile, entry)
+        # Determine compatibility from the profile's explicit extra, falling
+        # back to the entry's protocol.  Using the stored value keeps custom
+        # gateways that explicitly chose ``anthropic`` from being probed with
+        # the wrong header style (``Bearer`` vs ``x-api-key``).
+        compat: str | None = None
+        try:
+            extra = getattr(profile, "extra", {}) or {}
+            if isinstance(extra, dict) and extra.get("compatibility"):
+                compat = str(extra["compatibility"])
+            else:
+                # Infer from stored type when no explicit extra is present
+                ptype = (getattr(profile, "type", "") or "").lower()
+                if ptype in {"anthropic"}:
+                    compat = "anthropic"
+                elif ptype in {"openai-compatible", "openai"}:
+                    compat = "openai"
+                elif getattr(entry, "protocol", "") == "anthropic":
+                    compat = "anthropic"
+                elif getattr(entry, "protocol", "") == "openai":
+                    compat = "openai"
+        except Exception:
+            compat = None
         return await run_provider_check(
             entry,
             mode,
@@ -265,6 +312,7 @@ class ProviderStatusController:
             base_url=getattr(profile, "base_url", "") or None,
             model=getattr(profile, "model", "") or "",
             probe_inference=probe_inference,
+            compatibility=compat,
         )
 
     @staticmethod

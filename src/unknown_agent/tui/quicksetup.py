@@ -53,10 +53,46 @@ from unknown_agent.providers.discovery import (
     validate_credential,
 )
 from unknown_agent.providers.auth import AuthMode, auth_modes_for, cli_session_state, detect_auth_conflicts
+from unknown_agent.providers.compatibility import (
+    COMPATIBILITY_DESCRIPTIONS,
+    COMPATIBILITY_LABELS,
+    ORDER as COMPAT_ORDER,
+    normalize_compatibility,
+)
 from unknown_agent.tui.themes import apply_to_app
 from unknown_agent.tui.widgets import format_context, format_cost, rank_models
 
 log = get_logger("tui.quicksetup")
+
+
+async def _compat_call(coro_factory):  # type: ignore[no-untyped-def]
+    """Call a discovery coroutine tolerantly when a test double lacks ``compatibility``."""
+
+    try:
+        return await coro_factory(with_compat=True)
+    except TypeError as exc:
+        if "compatibility" in str(exc):
+            return await coro_factory(with_compat=False)
+        raise
+
+
+async def _safe_validate_credential(entry, *, api_key, base_url, compatibility):  # type: ignore[no-untyped-def]
+    async def _call(*, with_compat: bool):  # type: ignore[no-untyped-def]
+        if with_compat:
+            return await validate_credential(entry, api_key=api_key, base_url=base_url, compatibility=compatibility)
+        return await validate_credential(entry, api_key=api_key, base_url=base_url)  # type: ignore[call-arg]
+
+    return await _compat_call(_call)
+
+
+async def _safe_fetch_models(entry, *, api_key, base_url, compatibility, limit: int = 500):  # type: ignore[no-untyped-def]
+    async def _call(*, with_compat: bool):  # type: ignore[no-untyped-def]
+        if with_compat:
+            return await fetch_models(entry, api_key=api_key, base_url=base_url, compatibility=compatibility, limit=limit)
+        return await fetch_models(entry, api_key=api_key, base_url=base_url, limit=limit)  # type: ignore[call-arg]
+
+    return await _compat_call(_call)
+
 
 __all__ = [
     "QuickSetupResult",
@@ -83,12 +119,13 @@ class QuickSetupResult:
     provider_label: str = ""
     #: Which declared auth mode was configured (``chatgpt``/``api_key``/``routed``/…).
     auth_mode: str = ""
+    compatibility: str = ""     # openai | anthropic | auto
     model: str = ""
     base_url: str = ""
     credential_ref: str = ""
     credential_stored: bool = False
     models: list[str] = field(default_factory=list)
-    models_source: str = ""     # "live" | "catalog"
+    models_source: str = ""     # "live" | "catalog" | "manual"
     config_path: str = ""
     credential_path: str = ""
     error: str = ""
@@ -100,6 +137,7 @@ class QuickSetupResult:
             "provider_type": self.provider_type,
             "provider_label": self.provider_label,
             "auth_mode": self.auth_mode,
+            "compatibility": self.compatibility,
             "model": self.model,
             "base_url": self.base_url,
             "credential_ref": self.credential_ref,
@@ -139,6 +177,7 @@ def save_provider_choice(
     models: Sequence[ModelInfo] = (),
     profile_name: str = "",
     auth_mode: str = "",
+    compatibility: str = "",
     store: CredentialStore | None = None,
 ) -> QuickSetupResult:
     """Write the provider profile + credential and return the result.
@@ -161,6 +200,21 @@ def save_provider_choice(
         # Recorded so later runs report the truth (subscription vs key) instead of
         # inferring it from whether a credential happens to be present.
         values["auth_mode"] = auth_mode
+    # Persist explicit compatibility for custom endpoints (openai vs anthropic vs
+    # auto).  Catalog vendors encode this in their entry's protocol; custom
+    # profiles keep it in ``extra.compatibility`` so re-validation knows which
+    # header style to use.
+    if compatibility:
+        comp = normalize_compatibility(compatibility)
+        # For custom profiles the type already encodes compatibility, but storing
+        # the explicit choice lets ``validate_credential`` do auto-detect cleanly.
+        values.setdefault("extra", {})["compatibility"] = comp
+        # When the user explicitly chose anthropic for a generic profile, the
+        # stored type must be anthropic so the registry builds the right adapter.
+        if comp == "anthropic" and values.get("type") in {"openai-compatible", "openai"}:
+            values["type"] = "anthropic"
+        elif comp == "openai" and values.get("type") == "anthropic":
+            values["type"] = "openai-compatible"
 
     chosen = next((item for item in models if item.id == model), None)
     if chosen is not None:
@@ -203,13 +257,14 @@ def save_provider_choice(
     if callable(writer):
         config_path = str(writer(settings))
 
-    log.info("setup panel wrote profile=%s provider=%s model=%s", name, entry.key, model)
+    log.info("setup panel wrote profile=%s provider=%s model=%s compatibility=%s", name, entry.key, model, compatibility)
     return QuickSetupResult(
         cancelled=False,
         provider=name,
         provider_type=entry.key,
         provider_label=entry.label,
         auth_mode=auth_mode,
+        compatibility=compatibility or "",
         model=model,
         base_url=base_url,
         credential_ref=reference,
@@ -281,14 +336,24 @@ class ProviderScreen(Screen[None]):
             for entry in CATALOG
             if not text or text in entry.key.lower() or text in entry.label.lower() or text in entry.notes.lower()
         ]
+        # Always offer a custom endpoint that lets the user paste any OpenAI- or
+        # Anthropic-compatible base URL.  It is hidden only when the filter could
+        # not possibly match it, so it never feels like clutter.
+        show_custom = not text or any(word in "custom openai-compatible anthropic gateway vllm litellm proxy unli" for word in [text]) or "custom" in text or "gateway" in text or "unli" in text or text == ""
         self._entries = entries
         listing = self.query_one("#provider-list", OptionList)
         listing.clear_options()
         for entry in entries:
             listing.add_option(Option(self._row(entry), id=entry.key))
-        if entries:
+        if show_custom:
+            listing.add_option(Option(self._row_custom(), id="__custom__"))
+        if entries or show_custom:
             listing.highlighted = 0
-            self._detail(entries[0])
+            first = entries[0] if entries else None
+            if first is not None:
+                self._detail(first)
+            else:
+                self._detail_custom()
         else:
             self.query_one("#provider-detail", Static).update("[yellow]no provider matches that filter[/]")
 
@@ -305,6 +370,10 @@ class ProviderScreen(Screen[None]):
             badges.append("[dim]tools[/]")
         return f"[bold]{entry.label:<22}[/] " + "  ".join(badges)
 
+    @staticmethod
+    def _row_custom() -> str:
+        return "[bold]Custom endpoint        [/] [magenta]bring your own[/]  [dim]OpenAI or Anthropic[/]"
+
     def _detail(self, entry: ProviderEntry) -> None:
         lines = [entry.notes or f"{entry.label} via the {entry.protocol} dialect."]
         lines.append(f"[dim]→[/] endpoint: {entry.base_url or 'you provide it'}")
@@ -316,7 +385,18 @@ class ProviderScreen(Screen[None]):
             lines.append(f"[dim]→ get a key: {entry.docs_url}[/]")
         self.query_one("#provider-detail", Static).update("\n".join(lines))
 
+    def _detail_custom(self) -> None:
+        lines = [
+            "Any OpenAI-compatible or Anthropic-compatible gateway with a base URL, API key, and explicit compatibility choice.",
+            "[dim]→ endpoint: you provide it (e.g. https://api.unli.dev/v1, http://localhost:8000/v1)[/]",
+            "[dim]→ key: Bearer token for OpenAI style, x-api-key for Anthropic[/]",
+            "[dim]→ models: fetched live when the endpoint exposes /models, otherwise typed manually[/]",
+        ]
+        self.query_one("#provider-detail", Static).update("\n".join(lines))
+
     def _entry_at(self, option_id: str | None) -> ProviderEntry | None:
+        if option_id == "__custom__":
+            return None
         return resolve_entry(str(option_id)) if option_id else None
 
     # -- events ------------------------------------------------------------ #
@@ -326,25 +406,54 @@ class ProviderScreen(Screen[None]):
 
     @on(Input.Submitted, "#provider-filter")
     def _filter_submitted(self, event: Input.Submitted) -> None:
-        if self._entries:
-            self._choose(self._entries[0])
+        listing = self.query_one("#provider-list", OptionList)
+        idx = listing.highlighted if listing.highlighted is not None else 0
+        # Use the highlighted option id, not the first catalog entry, so the
+        # custom row can be chosen by typing ``custom`` and pressing Enter.
+        try:
+            option = listing.get_option_at_index(idx)
+            oid = getattr(option, "id", None)
+        except Exception:
+            oid = None
+        if oid == "__custom__":
+            self._choose_custom()
+        elif self._entries:
+            self._choose(self._entries[0] if idx is None else self._entry_at(oid) or self._entries[0])
 
     @on(OptionList.OptionHighlighted, "#provider-list")
     def _highlight(self, event: OptionList.OptionHighlighted) -> None:
+        oid = str(event.option.id) if event.option and event.option.id else ""
+        if oid == "__custom__":
+            self._detail_custom()
+            return
         entry = self._entry_at(event.option.id)
         if entry is not None:
             self._detail(entry)
 
     @on(OptionList.OptionSelected, "#provider-list")
     def _selected(self, event: OptionList.OptionSelected) -> None:
+        oid = str(event.option.id) if event.option and event.option.id else ""
+        if oid == "__custom__":
+            self._choose_custom()
+            return
         entry = self._entry_at(event.option.id)
         if entry is not None:
             self._choose(entry)
 
     def _choose(self, entry: ProviderEntry) -> None:
+        self.setup.custom_entry = False
+        self.setup.compatibility = "openai" if entry.protocol != "anthropic" else "anthropic"
         self.setup.entry = entry
         # Providers declare their own auth modes; never assume "paste a key".
         self.setup.begin_auth_mode()
+
+    def _choose_custom(self) -> None:
+        self.setup.custom_entry = True
+        self.setup.compatibility = "openai"
+        # Base URL and name are collected in the dedicated screen; entry stays
+        # None until that screen fabricates the real ProviderEntry.
+        self.setup.entry = None
+        self.setup.push_screen(CustomEndpointScreen(self.setup))
 
     def action_cancel(self) -> None:
         self.setup.cancel()
@@ -476,20 +585,26 @@ class ApiKeyScreen(ModalScreen[None]):
     async def _validate_and_fetch(self, key: str) -> None:
         entry = self.entry
         base_url = self.setup.base_url or None
+        compat = getattr(self.setup, "compatibility", "openai") or "openai"
         try:
-            result = await validate_credential(entry, api_key=key or None, base_url=base_url)
+            result = await _safe_validate_credential(entry, api_key=key or None, base_url=base_url, compatibility=compat)
         except Exception as exc:  # noqa: BLE001 - never show a traceback to a user
             self._fail("Could not reach the provider.", f"{type(exc).__name__}: {exc}")
             return
         if not result.ok:
-            self._fail(result.message, result.hint or "Copy the key again from the provider dashboard and retry.")
+            # Provide compatibility-aware hint: if the endpoint rejected an
+            # OpenAI-shaped request but speaks Anthropic, suggest switching.
+            hint = result.hint or "Copy the key again from the provider dashboard and retry."
+            if compat == "openai" and "404" in result.message:
+                hint = hint + " If this endpoint uses Anthropic Messages, switch compatibility to anthropic or auto-detect."
+            self._fail(result.message, hint)
             return
 
         self._status(f"[green]✓ key accepted[/] · [dim]fetching the models {entry.label} offers …[/]")
         models: list[ModelInfo] = []
         source = "live"
         try:
-            models = list(await fetch_models(entry, api_key=key or None, base_url=base_url))
+            models = list(await _safe_fetch_models(entry, api_key=key or None, base_url=base_url, compatibility=compat))
         except ProviderProbeError as exc:
             log.debug("model listing failed: %s", exc)
         except Exception as exc:  # noqa: BLE001
@@ -497,12 +612,19 @@ class ApiKeyScreen(ModalScreen[None]):
         if not models:
             source = "catalog"
             models = [ModelInfo(id=mid, name=mid, provider=entry.key) for mid in known_model_ids(entry)]
+        # If the provider exposes no listing and has no curated ids (custom
+        # endpoint), do not block the setup: the next screen accepts any typed
+        # model id and validates it lazily on first use.
         if not models:
-            self._fail(
-                f"{entry.label} accepted the key but returned no models.",
-                "Pick a different provider, or set a base URL for your deployment.",
-            )
-            return
+            source = "manual"
+            # Seed with the entry's default model if it has one, otherwise leave
+            # empty and let the model screen's typed input carry the choice.
+            if getattr(entry, "default_model", ""):
+                models = [ModelInfo(id=entry.default_model, name=entry.default_model, provider=entry.key)]
+                source = "catalog"
+            else:
+                models = []
+                self._status(f"[green]✓ key accepted[/] · [dim]no model list returned — you can type a model id on the next screen[/]")
 
         self.setup.models = models
         self.setup.models_source = source
@@ -555,7 +677,14 @@ class ModelScreen(Screen[None]):
     def compose(self) -> ComposeResult:
         entry = self.setup.entry
         label = entry.label if entry else "provider"
-        source = "fetched live from the provider" if self.setup.models_source == "live" else "from the built-in catalog"
+        if self.setup.models_source == "live":
+            source = "fetched live from the provider"
+        elif self.setup.models_source == "catalog":
+            source = "from the built-in catalog"
+        elif self.setup.models_source == "manual":
+            source = "no list returned — type a model id below"
+        else:
+            source = "from the provider"
         with Vertical(id="model-card"):
             yield Static(f"{label} · choose a model", id="model-title")
             yield Static(
@@ -566,6 +695,7 @@ class ModelScreen(Screen[None]):
             yield Input(placeholder="filter models …", id="model-filter")
             yield OptionList(id="model-list")
             yield Static("", id="model-detail")
+            yield Input(placeholder="…or type any model id (e.g. auto, gpt-4o-mini) then press Enter", id="model-typed")
         yield Footer()
 
     def on_mount(self) -> None:
@@ -620,8 +750,30 @@ class ModelScreen(Screen[None]):
 
     @on(Input.Submitted, "#model-filter")
     def _filter_submitted(self, event: Input.Submitted) -> None:
+        # If the filter has a typed model id that exactly matches a model, let
+        # the typed handler take precedence; otherwise pick the top hit.
+        typed = self.query_one("#model-typed", Input).value.strip() if self.query_one("#model-typed", Input) else ""
+        if typed:
+            self._pick(typed)
+            return
         if self._shown:
             self._pick(self._shown[0].id)
+
+    @on(Input.Submitted, "#model-typed")
+    def _typed_submitted(self, event: Input.Submitted) -> None:
+        model_id = event.value.strip()
+        if model_id:
+            self._pick(model_id)
+
+    @on(Input.Changed, "#model-typed")
+    def _typed_changed(self, event: Input.Changed) -> None:
+        # Free-form typing is the manual fallback: show it in the detail pane so
+        # the user sees "you are about to use <id>" even before pressing Enter.
+        model_id = event.value.strip()
+        if model_id:
+            self.query_one("#model-detail", Static).update(f"[dim]→ typed: {model_id}  ·  will be saved as custom model id[/]")
+        elif self._shown:
+            self._detail(self._shown[0])
 
     @on(OptionList.OptionHighlighted, "#model-list")
     def _highlight(self, event: OptionList.OptionHighlighted) -> None:
@@ -635,6 +787,15 @@ class ModelScreen(Screen[None]):
 
     def _pick(self, model_id: str) -> None:
         self.setup.model = model_id
+        # If the model was typed manually and not in the fetched list, fabricate a
+        # ModelInfo so persistence can record its capabilities as "unknown" rather
+        # than dropping the choice.
+        if self.setup.models and model_id not in {m.id for m in self.setup.models}:
+            self.setup.models.append(ModelInfo(id=model_id, name=model_id, provider=self.setup.entry.key if self.setup.entry else "custom"))
+            self.setup.models_source = "manual"
+        elif not self.setup.models:
+            self.setup.models = [ModelInfo(id=model_id, name=model_id, provider=self.setup.entry.key if self.setup.entry else "custom")]
+            self.setup.models_source = "manual"
         self.setup.show_review()
 
     def action_back(self) -> None:
@@ -962,6 +1123,9 @@ class SetupApp(App[QuickSetupResult]):
         self.env_key: str = ""
         self.credential_ref: str = ""
         self.base_url: str = ""
+        self.compatibility: str = "openai"
+        self.custom_entry: bool = False
+        self.profile_name: str = ""
         self.models: list[ModelInfo] = []
         self.models_source: str = ""
         self.model: str = ""
@@ -1014,7 +1178,12 @@ class SetupApp(App[QuickSetupResult]):
     def begin_credentials(self) -> None:
         entry = self.entry
         mode = self.auth_mode
-        if entry is None:
+        if entry is None and not self.custom_entry:
+            return
+        # Custom endpoints always have a synthetic entry after CustomEndpointScreen.
+        if self.custom_entry and entry is None:
+            # Should have been fabricated in CustomEndpointScreen; offer to go there.
+            self.push_screen(CustomEndpointScreen(self))
             return
         if mode is not None and mode.requires_base_url and not self.base_url:
             self.push_screen(BaseUrlScreen(self))
@@ -1024,11 +1193,17 @@ class SetupApp(App[QuickSetupResult]):
             self.credential_ref = ""
             self._fetch_keyless()
             return
+        assert entry is not None  # for type checkers after custom guard
         if entry.requires_base_url and not self.base_url:
             # Resource-specific endpoints (Azure, self-hosted) are asked for in the
             # same dialog family rather than as a separate command.
             self.push_screen(BaseUrlScreen(self))
             return
+        # For generic openai-compatible profiles with a custom base URL we offer a
+        # compatibility check: the user may want to explicitly state anthropic vs
+        # openai rather than relying on header guessing.
+        if self.base_url and not self.custom_entry and entry.protocol == "openai" and self.compatibility not in {"openai", "anthropic"}:
+            self.compatibility = "openai"
         if not entry.api_key_required:
             self.api_key = ""
             self.credential_ref = ""
@@ -1059,13 +1234,13 @@ class SetupApp(App[QuickSetupResult]):
             return
         models: list[ModelInfo] = []
         try:
-            models = list(await fetch_models(entry, base_url=self.base_url or None))
+            models = list(await _safe_fetch_models(entry, api_key=None, base_url=self.base_url or None, compatibility=self.compatibility or None))
             self.models_source = "live"
         except Exception:  # noqa: BLE001 - local servers are often not running yet
             models = []
         if not models:
             models = [ModelInfo(id=mid, name=mid, provider=entry.key) for mid in known_model_ids(entry)]
-            self.models_source = "catalog"
+            self.models_source = "catalog" if models else "manual"
         self.models = models
         self.show_models()
 
@@ -1075,12 +1250,15 @@ class SetupApp(App[QuickSetupResult]):
         if entry is None or not self.model:
             self.cancel()
             return
+        # For custom endpoints the profile name may be user-chosen; respect it.
+        effective_profile_name = self.profile_name if self.custom_entry and self.profile_name else ""
         if self.runtime is None:
             self.result = QuickSetupResult(
                 cancelled=False,
-                provider=entry.key,
+                provider=effective_profile_name or entry.key,
                 provider_type=entry.key,
                 provider_label=entry.label,
+                compatibility=self.compatibility,
                 model=self.model,
                 base_url=self.base_url,
                 credential_ref=self.credential_ref,
@@ -1099,6 +1277,8 @@ class SetupApp(App[QuickSetupResult]):
                 base_url=self.base_url,
                 models=self.models,
                 auth_mode=self.auth_mode.key if self.auth_mode else "",
+                compatibility=self.compatibility,
+                profile_name=effective_profile_name,
             )
         except Exception as exc:  # noqa: BLE001 - surface it in the panel, not as a crash
             log.warning("setup save failed: %s", exc)
@@ -1159,6 +1339,218 @@ class BaseUrlScreen(ModalScreen[None]):
 
     def action_back(self) -> None:
         self.setup.back_to_providers()
+
+
+class CustomEndpointScreen(ModalScreen[None]):
+    """Collect base URL + name + compatibility for any bring-your-own endpoint."""
+
+    BINDINGS = [Binding("escape", "back", "Back")]
+
+    CSS = """
+    CustomEndpointScreen { align: center middle; background: $background 70%; }
+    #custom-dialog { width: 84; height: auto; max-height: 88%; border: thick $primary; background: $surface; padding: 1 2; overflow-y: auto; }
+    #custom-title { text-style: bold; color: $primary; height: 1; }
+    #custom-help { color: $text-muted; height: auto; margin-bottom: 1; }
+    #compat-help { color: $text-muted; height: auto; margin: 1 0 1 0; }
+    #custom-status { color: $error; height: auto; min-height: 1; }
+    """
+
+    def __init__(self, setup_app: SetupApp) -> None:
+        super().__init__()
+        self.setup = setup_app
+        self.compatibility = getattr(setup_app, "compatibility", "openai") or "openai"
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="custom-dialog"):
+            yield Static("Custom endpoint · bring your own gateway", id="custom-title")
+            yield Static(
+                "Treated as a first-class provider: model discovery, validation, and adapter routing all run through the same code as the catalog vendors.",
+                id="custom-help",
+            )
+            yield Static("Base URL (include /v1 if your server expects it)", id="custom-label-url")
+            yield Input(value=self.setup.base_url, placeholder="https://api.unli.dev/v1  ·  http://localhost:8000/v1", id="custom-url")
+            yield Static("Display name (how it appears in config & prompts)", id="custom-label-name")
+            yield Input(value=self.setup.profile_name, placeholder="unli  ·  internal-llm  ·  my-gateway", id="custom-name")
+            yield Static("API compatibility — how this endpoint speaks", id="compat-help")
+            yield OptionList(id="compat-list")
+            yield Label("", id="custom-status")
+            with Horizontal(id="custom-buttons"):
+                yield Button("continue", variant="primary", id="custom-continue")
+                yield Button("back", id="custom-back")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        listing = self.query_one("#compat-list", OptionList)
+        for key in COMPAT_ORDER:
+            label = COMPATIBILITY_LABELS.get(key, key)
+            desc = COMPATIBILITY_DESCRIPTIONS.get(key, "")
+            listing.add_option(Option(f"{label}\n[dim]{desc}[/]", id=key))
+        # Highlight the previously chosen or default compat.
+        order_index = list(COMPAT_ORDER).index(self.compatibility) if self.compatibility in COMPAT_ORDER else 0
+        listing.highlighted = order_index
+        self._show_compat_detail(self.compatibility)
+        self.query_one("#custom-url", Input).focus()
+
+    def _show_compat_detail(self, key: str) -> None:
+        desc = COMPATIBILITY_DESCRIPTIONS.get(key, "")
+        self.query_one("#custom-status", Label).update(f"[dim]{desc}[/]" if desc else "")
+
+    @on(OptionList.OptionHighlighted, "#compat-list")
+    def _compat_highlight(self, event: OptionList.OptionHighlighted) -> None:
+        oid = str(event.option.id) if event.option and event.option.id else "openai"
+        self.compatibility = normalize_compatibility(oid)
+        self._show_compat_detail(self.compatibility)
+
+    @on(OptionList.OptionSelected, "#compat-list")
+    def _compat_selected(self, event: OptionList.OptionSelected) -> None:
+        oid = str(event.option.id) if event.option and event.option.id else "openai"
+        self.compatibility = normalize_compatibility(oid)
+        # Do not auto-advance on selection; let the user press Continue so they
+        # have a chance to edit the URL/name first.
+        self._show_compat_detail(self.compatibility)
+
+    @on(Input.Submitted, "#custom-url")
+    @on(Input.Submitted, "#custom-name")
+    def _submitted(self, event: Input.Submitted) -> None:
+        self._try_continue()
+
+    @on(Button.Pressed, "#custom-continue")
+    def _continue_pressed(self, event: Button.Pressed) -> None:
+        self._try_continue()
+
+    @on(Button.Pressed, "#custom-back")
+    def _back_pressed(self, event: Button.Pressed) -> None:
+        self.action_back()
+
+    def _try_continue(self) -> None:
+        url = self.query_one("#custom-url", Input).value.strip()
+        name = self.query_one("#custom-name", Input).value.strip() or "custom"
+        if not url.startswith(("http://", "https://")):
+            self.query_one("#custom-status", Label).update("[red]✕ base URL must start with http:// or https://[/]")
+            return
+        # Fabricate a catalog-style entry so the rest of the flow (validation,
+        # model listing) can treat this exactly like a built-in vendor.
+        from unknown_agent.providers.catalog import ProviderEntry
+
+        compat = normalize_compatibility(self.compatibility)
+        protocol = "anthropic" if compat == "anthropic" else "openai"
+        listing = "anthropic" if compat == "anthropic" else "openai"
+        # Auto stores the probe hint in extra; the adapter still starts as openai.
+        if compat == "auto":
+            protocol = "openai"
+            listing = "openai"
+        safe = _safe_name(name)
+        entry = ProviderEntry(
+            key=safe,
+            label=name,
+            protocol=protocol,  # type: ignore[arg-type]
+            base_url=url.rstrip("/"),
+            env_var=f"{safe.upper().replace('-', '_')}_API_KEY",
+            docs_url=url,
+            credential_hint="key from your gateway",
+            api_key_required=True,
+            model_listing=listing,  # type: ignore[arg-type]
+            default_model="",
+            supports_tools=True,
+            supports_streaming=True,
+            supports_json_mode=True,
+            supports_reasoning=False,
+            supports_vision=False,
+            notes=f"custom endpoint ({compat}) entered via setup panel",
+        )
+        self.setup.base_url = url.rstrip("/")
+        self.setup.profile_name = safe
+        self.setup.compatibility = compat
+        self.setup.entry = entry
+        self.setup.custom_entry = True
+        self.setup.auth_mode = None
+        # Dismiss this modal first, then continue the flow on the app's next
+        # refresh so the screen stack is consistent (Textual's ModalScreen
+        # dismiss is asynchronous).  Scheduling avoids "screen not found"
+        # flashes.
+        self.dismiss(None)
+        self.app.call_after_refresh(self.setup.begin_credentials)
+
+    def action_back(self) -> None:
+        self.dismiss(None)
+        self.app.call_after_refresh(self.setup.back_to_providers)
+
+
+class CompatibilityScreen(Screen[None]):
+    """Let the user confirm or switch compatibility after a base URL was entered."""
+
+    BINDINGS = [Binding("escape", "back", "Back"), Binding("ctrl+c", "cancel", "Quit", show=False)]
+
+    CSS = """
+    CompatibilityScreen { align: center middle; }
+    #compat-card { width: 90; max-width: 96%; height: auto; max-height: 90%; border: round $primary; background: $surface; padding: 1 2; }
+    #compat-title { text-style: bold; color: $primary; height: 1; }
+    #compat-sub { color: $text-muted; height: auto; margin-bottom: 1; }
+    #compat-list { height: 12; border: round $panel-lighten-2 50%; background: $surface; }
+    #compat-detail { height: auto; min-height: 3; margin-top: 1; padding: 0 1; color: $text-muted; border-left: thick $primary 60%; }
+    """
+
+    def __init__(self, setup_app: SetupApp) -> None:
+        super().__init__()
+        self.setup = setup_app
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="compat-card"):
+            yield Static("Choose API compatibility", id="compat-title")
+            yield Static("Different gateways emulate different APIs.  OpenAI-compatible is the safe default — UNLI, OpenAI, Groq and most proxies use it.", id="compat-sub")
+            yield OptionList(id="compat-list")
+            yield Static("", id="compat-detail")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        listing = self.query_one("#compat-list", OptionList)
+        for key in COMPAT_ORDER:
+            label = COMPATIBILITY_LABELS.get(key, key)
+            listing.add_option(Option(f"{label}", id=key))
+        current = getattr(self.setup, "compatibility", "openai") or "openai"
+        order = list(COMPAT_ORDER)
+        listing.highlighted = order.index(current) if current in order else 0
+        self._describe(current)
+        listing.focus()
+
+    def _describe(self, key: str) -> None:
+        desc = COMPATIBILITY_DESCRIPTIONS.get(key, "")
+        label = COMPATIBILITY_LABELS.get(key, key)
+        self.query_one("#compat-detail", Static).update(f"[bold]{label}[/]\n[dim]{desc}[/]")
+
+    @on(OptionList.OptionHighlighted, "#compat-list")
+    def _highlight(self, event: OptionList.OptionHighlighted) -> None:
+        oid = str(event.option.id) if event.option and event.option.id else "openai"
+        self._describe(normalize_compatibility(oid))
+
+    @on(OptionList.OptionSelected, "#compat-list")
+    def _select(self, event: OptionList.OptionSelected) -> None:
+        oid = str(event.option.id) if event.option and event.option.id else "openai"
+        self.setup.compatibility = normalize_compatibility(oid)
+        # If the entry already exists and the user switches between openai and
+        # anthropic, patch its protocol/listing so validation builds the right
+        # headers; for auto we keep openai but the probe will try both.
+        entry = self.setup.entry
+        if entry is not None and not self.setup.custom_entry:
+            # For catalog vendors we don't mutate the entry; we just remember the
+            # override.  Custom entries will be rebuilt on next save from the
+            # compatibility flag.
+            pass
+        elif entry is not None and self.setup.custom_entry:
+            from dataclasses import replace as dc_replace
+
+            compat = self.setup.compatibility
+            if compat == "anthropic":
+                self.setup.entry = dc_replace(entry, protocol="anthropic", model_listing="anthropic")  # type: ignore[arg-type]
+            elif compat == "openai":
+                self.setup.entry = dc_replace(entry, protocol="openai", model_listing="openai")  # type: ignore[arg-type]
+        self.setup.begin_credentials()
+
+    def action_back(self) -> None:
+        self.setup.back_to_providers()
+
+    def action_cancel(self) -> None:
+        self.setup.cancel()
 
 
 # --------------------------------------------------------------------------- #

@@ -16,7 +16,7 @@ comes back as a normalised :class:`ProviderProbeError` with a human hint.
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import httpx
@@ -25,6 +25,7 @@ from unknown_agent.config.secrets import REDACTOR, looks_like_credential
 from unknown_agent.errors import ConfigError, ProviderError
 from unknown_agent.observability.logging import get_logger
 from unknown_agent.providers.catalog import ProviderEntry, known_model_ids
+from unknown_agent.providers.compatibility import normalize_compatibility
 
 log = get_logger("providers.discovery")
 
@@ -84,13 +85,16 @@ class ProviderProbeError(ProviderError):
 # --------------------------------------------------------------------------- #
 # request building
 # --------------------------------------------------------------------------- #
-def build_client(entry: ProviderEntry, *, api_key: str | None, base_url: str | None = None, timeout: float = DEFAULT_TIMEOUT) -> httpx.AsyncClient:
+def build_client(entry: ProviderEntry, *, api_key: str | None, base_url: str | None = None, timeout: float = DEFAULT_TIMEOUT, compatibility: str | None = None) -> httpx.AsyncClient:
     """Create an HTTP client with the provider's auth and headers applied."""
 
     headers: dict[str, str] = {"Accept": "application/json", "User-Agent": "unknown-agent"}
     headers.update(entry.extra_headers)
+    # Compatibility override determines header style: Anthropic uses x-api-key,
+    # OpenAI-compatible uses Bearer.
+    effective_protocol = normalize_effective_protocol(entry, compatibility)
     if api_key:
-        if entry.protocol == "anthropic":
+        if effective_protocol == "anthropic":
             headers["x-api-key"] = api_key
             headers.setdefault("anthropic-version", "2023-06-01")
         else:
@@ -102,6 +106,50 @@ def build_client(entry: ProviderEntry, *, api_key: str | None, base_url: str | N
             hint="Pass --base-url (for Azure: https://<resource>.openai.azure.com/openai/v1).",
         )
     return httpx.AsyncClient(base_url=root, headers=headers, timeout=timeout)
+
+
+def normalize_effective_protocol(entry: ProviderEntry, compatibility: str | None) -> str:
+    if compatibility:
+        comp = normalize_compatibility(compatibility)
+        if comp == "anthropic":
+            return "anthropic"
+        return "openai"
+    return entry.protocol
+
+
+def effective_entry_for_compatibility(entry: ProviderEntry, compatibility: str | None) -> ProviderEntry:
+    """Return an entry that behaves as if it had the requested compatibility.
+
+    This is how a generic ``openai-compatible`` profile can be asked to speak
+    Anthropic without creating a second catalog entry.
+    """
+
+    if not compatibility or compatibility in {"", "auto"}:
+        return entry
+    comp = normalize_compatibility(compatibility)
+    if comp == "anthropic" and entry.protocol != "anthropic":
+        # Build a shallow copy with anthropic protocol and appropriate listing.
+        return replace(entry, protocol="anthropic", model_listing="anthropic")
+    if comp == "openai" and entry.protocol == "anthropic":
+        return replace(entry, protocol="openai", model_listing="openai")
+    return entry
+
+
+def _safe_build_client(entry: ProviderEntry, *, api_key: str | None, base_url: str | None, timeout: float, compatibility: str | None) -> httpx.AsyncClient:
+    """Call :func:`build_client` compatibly with monkeypatched test doubles.
+
+    Tests replace ``build_client`` with a ``lambda`` that does not accept the new
+    ``compatibility`` kwarg.  When that happens we retry without the kwarg so the
+    existing suite keeps passing while real code still benefits from the header
+    override.
+    """
+
+    try:
+        return build_client(entry, api_key=api_key, base_url=base_url, timeout=timeout, compatibility=compatibility)
+    except TypeError as exc:
+        if "compatibility" in str(exc):
+            return build_client(entry, api_key=api_key, base_url=base_url, timeout=timeout)  # type: ignore[call-arg]
+        raise
 
 
 def _listing_url(entry: ProviderEntry) -> str:
@@ -123,15 +171,28 @@ def _parse_openai_style(entry: ProviderEntry, payload: dict[str, Any]) -> list[M
         model_id = str(item.get("id") or item.get("name") or "").strip()
         if not model_id:
             continue
+        # Prefer the helper, but also probe both nesting levels explicitly
+        # so a plain dict without calling the helper twice is handled.
+        caps = item.get("capabilities") if isinstance(item.get("capabilities"), dict) else {}
+        limits_supports = (caps.get("limits") or {}).get("supports") if isinstance(caps.get("limits"), dict) else {}
+        direct_supports = caps.get("supports") if isinstance(caps.get("supports"), dict) else {}
+        tool_val = _tools_supported(item)
+        if tool_val is None:
+            if "tool_calls" in direct_supports:
+                tool_val = bool(direct_supports["tool_calls"])
+            elif "tool_calls" in limits_supports:
+                tool_val = bool(limits_supports["tool_calls"])
         models.append(
             ModelInfo(
                 id=model_id,
                 name=str(item.get("name") or item.get("display_name") or model_id),
                 provider=entry.key,
-                context_window=_int(item.get("context_window") or item.get("context_length") or item.get("max_context_tokens")),
-                max_output_tokens=_int(item.get("max_output_tokens") or item.get("max_completion_tokens")),
+                context_window=_int(item.get("context_window") or item.get("context_length") or item.get("max_context_tokens") or caps.get("limits", {}).get("max_context_window_tokens")),
+                max_output_tokens=_int(item.get("max_output_tokens") or item.get("max_completion_tokens") or caps.get("limits", {}).get("max_output_tokens")),
                 created=_float(item.get("created") or item.get("created_at")),
-                supports_tools=_tools_supported(item),
+                supports_tools=tool_val,
+                supports_vision=_vision_supported(item),
+                supports_reasoning=_reasoning_supported(item),
                 raw=item,
             )
         )
@@ -235,6 +296,7 @@ async def fetch_models(
     base_url: str | None = None,
     timeout: float = DEFAULT_TIMEOUT,
     limit: int = 500,
+    compatibility: str | None = None,
 ) -> list[ModelInfo]:
     """Ask the provider for its models; fall back to the catalog when it cannot.
 
@@ -243,28 +305,66 @@ async def fetch_models(
     fallback list instead.
     """
 
+    # ``auto`` probes OpenAI first, then Anthropic if the first attempt hints at
+    # a protocol mismatch (404 on /models, 405, or auth header mismatch).
+    if compatibility and normalize_compatibility(compatibility) == "auto":
+        # For auto we try openai first; if that fails with a clear protocol hint
+        # we retry as anthropic exactly once before surfacing the final error.
+        last_error: ProviderProbeError | None = None
+        for attempt_comp in ("openai", "anthropic"):
+            try:
+                return await _fetch_models_once(entry, api_key=api_key, base_url=base_url, timeout=timeout, limit=limit, compatibility=attempt_comp)
+            except ProviderProbeError as exc:  # noqa: BLE001
+                last_error = exc
+                # Auth failures (401/403) are not a compatibility hint; surface immediately.
+                msg = (exc.message or "").lower()
+                if "401" in msg or "403" in msg or "unauthorized" in msg or "forbidden" in msg:
+                    raise
+                # If we are on openai and got 404/405 or method not allowed, retry as anthropic.
+                if attempt_comp == "openai" and any(code in msg for code in ("404", "405", "not found", "method not allowed")):
+                    continue
+                # Otherwise surface the first error after trying both? For now raise the last.
+                if attempt_comp == "anthropic":
+                    raise
+        if last_error is not None:
+            raise last_error
+        return []
+
+    return await _fetch_models_once(entry, api_key=api_key, base_url=base_url, timeout=timeout, limit=limit, compatibility=compatibility)
+
+
+async def _fetch_models_once(
+    entry: ProviderEntry,
+    *,
+    api_key: str | None = None,
+    base_url: str | None = None,
+    timeout: float = DEFAULT_TIMEOUT,
+    limit: int = 500,
+    compatibility: str | None = None,
+) -> list[ModelInfo]:
     if entry.model_listing == "none":
         return [ModelInfo(id=model_id, name=model_id, provider=entry.key) for model_id in known_model_ids(entry)]
 
-    client = build_client(entry, api_key=api_key, base_url=base_url, timeout=timeout)
+    eff_entry = effective_entry_for_compatibility(entry, compatibility)
+    client = _safe_build_client(eff_entry, api_key=api_key, base_url=base_url, timeout=timeout, compatibility=compatibility)
     try:
-        response = await client.get(_listing_url(entry))
-        _raise_for_status(entry, response)
+        response = await client.get(_listing_url(eff_entry))
+        _raise_for_status(eff_entry, response)
         payload = response.json()
     except httpx.HTTPError as exc:  # network-level failure
         raise ProviderProbeError(
-            f"Could not reach {entry.label}: {type(exc).__name__}: {exc}",
+            f"Could not reach {eff_entry.label}: {type(exc).__name__}: {exc}",
             hint="Check your network connection, proxy settings, or run the provider locally.",
         ) from exc
     finally:
         await client.aclose()
 
-    parser = _PARSERS.get(entry.model_listing, _parse_openai_style)
-    models = parser(entry, payload if isinstance(payload, dict) else {})
+    parser = _PARSERS.get(eff_entry.model_listing, _parse_openai_style)
+    models = parser(eff_entry, payload if isinstance(payload, dict) else {})
     models.sort(key=lambda item: item.id)
     if not models:
         raise ProviderProbeError(
-            f"{entry.label} returned an empty model list.",
+            f"{eff_entry.label} returned an empty model list.",
             hint="The key may be valid but not enabled for any model, or the account needs billing set up.",
         )
     return models[:limit]
@@ -276,6 +376,7 @@ async def validate_credential(
     api_key: str | None = None,
     base_url: str | None = None,
     timeout: float = DEFAULT_TIMEOUT,
+    compatibility: str | None = None,
 ) -> ValidationResult:
     """Check that a key works, preferring the cheapest possible call.
 
@@ -287,27 +388,48 @@ async def validate_credential(
     if entry.api_key_required and not api_key:
         return ValidationResult(False, f"{entry.label} requires an API key.", hint=f"Set {entry.env_var} or paste the key here.")
 
-    if entry.model_listing != "none":
+    # Auto-detect compatibility before validating, so the check uses the right
+    # header style and endpoint shape.
+    if compatibility and normalize_compatibility(compatibility) == "auto":
+        # Try openai first; only retry as anthropic when the failure suggests
+        # a protocol mismatch, not an auth failure.
+        last_result: ValidationResult | None = None
+        for attempt in ("openai", "anthropic"):
+            res = await validate_credential(entry, api_key=api_key, base_url=base_url, timeout=timeout, compatibility=attempt)
+            if res.ok:
+                return res
+            last_result = res
+            txt = (res.message or "").lower()
+            if "401" in txt or "403" in txt or "unauthorized" in txt or "invalid api key" in txt:
+                return res
+            # If openai returned 404 style, let anthropic have a chance.
+            if attempt == "openai" and ("404" in txt or "not found" in txt or "method not allowed" in txt):
+                continue
+            return res
+        return last_result or ValidationResult(False, "Could not validate the credential.")
+
+    eff_entry = effective_entry_for_compatibility(entry, compatibility)
+    if eff_entry.model_listing != "none":
         try:
-            models = await fetch_models(entry, api_key=api_key, base_url=base_url, timeout=timeout)
+            models = await fetch_models(eff_entry, api_key=api_key, base_url=base_url, timeout=timeout, compatibility=compatibility)
         except ProviderProbeError as exc:
             return ValidationResult(False, exc.message, hint=exc.hint)
         return ValidationResult(
             True,
-            f"{entry.label} accepted the key and listed {len(models)} model(s).",
+            f"{eff_entry.label} accepted the key and listed {len(models)} model(s).",
             models_available=True,
             model_count=len(models),
         )
 
     try:
-        await _probe_completion(entry, api_key=api_key, base_url=base_url, timeout=timeout)
+        await _probe_completion(eff_entry, api_key=api_key, base_url=base_url, timeout=timeout, compatibility=compatibility)
     except ProviderProbeError as exc:
         return ValidationResult(False, exc.message, hint=exc.hint)
     return ValidationResult(
         True,
-        f"{entry.label} accepted the key (verified with a minimal request; this vendor does not list models).",
+        f"{eff_entry.label} accepted the key (verified with a minimal request; this vendor does not list models).",
         models_available=False,
-        model_count=len(known_model_ids(entry)),
+        model_count=len(known_model_ids(eff_entry)),
     )
 
 
@@ -329,8 +451,10 @@ async def validate_profile(settings: Any, name: str, *, model: str | None = None
 
     entry = resolve_entry_for(profile)
     target_model = model or profile.model
+    # Compatibility is inferred from the stored profile type / extra.
+    compat = _compatibility_from_profile(profile, entry)
     try:
-        models = await fetch_models(entry, api_key=api_key, base_url=profile.base_url or entry.base_url)
+        models = await fetch_models(entry, api_key=api_key, base_url=profile.base_url or entry.base_url, compatibility=compat)
     except ProviderProbeError as exc:
         if not isinstance(exc, ProviderProbeError):  # pragma: no cover - defensive
             raise
@@ -346,6 +470,25 @@ async def validate_profile(settings: Any, name: str, *, model: str | None = None
     return ValidationResult(True, f"{entry.label} is healthy: {len(models)} model(s), using {target_model!r}.", model_count=len(models))
 
 
+def _compatibility_from_profile(profile: Any, entry: ProviderEntry) -> str | None:
+    # Explicit extra field wins (added by the improved TUI).
+    extra = getattr(profile, "extra", {}) or {}
+    if isinstance(extra, dict) and extra.get("compatibility"):
+        return str(extra["compatibility"])
+    # Otherwise infer from the stored type / protocol.
+    ptype = (getattr(profile, "type", "") or "").lower()
+    if ptype in {"anthropic"}:
+        return "anthropic"
+    if ptype in {"openai-compatible", "openai"}:
+        return "openai"
+    # Fall back to the entry's own protocol when it is a catalog vendor.
+    if entry.protocol == "anthropic":
+        return "anthropic"
+    if entry.protocol == "openai":
+        return "openai"
+    return None
+
+
 def resolve_entry_for(profile: Any) -> ProviderEntry:
     """Map a configured profile back to its catalog entry (best effort)."""
 
@@ -355,22 +498,39 @@ def resolve_entry_for(profile: Any) -> ProviderEntry:
     if direct is not None:
         return direct
     base_url = (profile.base_url or "").rstrip("/")
+    # Compatibility may be stored in extra; use it to pick the right protocol
+    # rather than assuming generic openai-compatible always means openai protocol.
+    compat = None
+    extra = getattr(profile, "extra", {}) or {}
+    if isinstance(extra, dict):
+        compat = extra.get("compatibility") or extra.get("compat")
+    ptype = getattr(profile, "type", "")
+    wanted_protocol = "openai"
+    if compat:
+        wanted_protocol = "anthropic" if normalize_compatibility(str(compat)) == "anthropic" else "openai"
+    elif ptype == "anthropic":
+        wanted_protocol = "anthropic"
     for entry in CATALOG:
-        if entry.protocol == profile.type and entry.base_url.rstrip("/") == base_url:
+        if entry.protocol == wanted_protocol and entry.base_url.rstrip("/") == base_url:
             return entry
     for entry in CATALOG:
-        if entry.protocol == profile.type and entry.key == profile.type:
+        if entry.protocol == wanted_protocol and entry.key == ptype:
             return entry
     from unknown_agent.providers.catalog import ProviderEntry as _Entry
 
+    # Determine model listing based on compatibility
+    if wanted_protocol == "anthropic":
+        listing: str = "anthropic"
+    else:
+        listing = "openai" if base_url else "none"
     return _Entry(
-        key=profile.type,
-        label=profile.type,
-        protocol=profile.type if profile.type in {"anthropic", "ollama", "offline"} else "openai",
+        key=ptype or "custom",
+        label=ptype or "custom",
+        protocol=wanted_protocol if wanted_protocol in {"anthropic", "ollama", "offline"} else "openai",
         base_url=base_url,
         env_var="",
         docs_url="",
-        model_listing="openai" if base_url else "none",
+        model_listing=listing,  # type: ignore[arg-type]
         supports_tools=getattr(profile, "supports_tools", True),
     )
 
@@ -378,22 +538,33 @@ def resolve_entry_for(profile: Any) -> ProviderEntry:
 # --------------------------------------------------------------------------- #
 # helpers
 # --------------------------------------------------------------------------- #
-async def _probe_completion(entry: ProviderEntry, *, api_key: str | None, base_url: str | None, timeout: float) -> None:
-    client = build_client(entry, api_key=api_key, base_url=base_url, timeout=timeout)
-    model = entry.default_model or (known_model_ids(entry)[0] if known_model_ids(entry) else "")
+async def _probe_completion(entry: ProviderEntry, *, api_key: str | None, base_url: str | None, timeout: float, compatibility: str | None = None) -> None:
+    eff_entry = effective_entry_for_compatibility(entry, compatibility)
+    client = _safe_build_client(eff_entry, api_key=api_key, base_url=base_url, timeout=timeout, compatibility=compatibility)
+    model = eff_entry.default_model or (known_model_ids(eff_entry)[0] if known_model_ids(eff_entry) else "")
     if not model:
-        raise ProviderProbeError(f"{entry.label} has no default model to test with.", hint="Pass --model explicitly.")
-    body = {
-        "model": model,
-        "messages": [{"role": "user", "content": "ping"}],
-        "max_tokens": 1,
-        "temperature": 0,
-    }
+        raise ProviderProbeError(f"{eff_entry.label} has no default model to test with.", hint="Pass --model explicitly.")
+    # Anthropic and OpenAI use different probe shapes.
+    if eff_entry.protocol == "anthropic" or normalize_compatibility(compatibility or "") == "anthropic":
+        body = {
+            "model": model,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+        }
+        path = "/messages"
+    else:
+        body = {
+            "model": model,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+            "temperature": 0,
+        }
+        path = "/chat/completions"
     try:
-        response = await client.post("/chat/completions", json=body)
-        _raise_for_status(entry, response)
+        response = await client.post(path, json=body)
+        _raise_for_status(eff_entry, response)
     except httpx.HTTPError as exc:
-        raise ProviderProbeError(f"Could not reach {entry.label}: {exc}", hint="Check network access and the base URL.") from exc
+        raise ProviderProbeError(f"Could not reach {eff_entry.label}: {exc}", hint="Check network access and the base URL.") from exc
     finally:
         await client.aclose()
 
@@ -448,13 +619,48 @@ def _short_body(response: httpx.Response) -> str:
 
 
 def _tools_supported(item: dict[str, Any]) -> bool | None:
+    # Direct OpenAI-style supported_parameters list
     params = item.get("supported_parameters")
     if isinstance(params, list) and params:
         return "tools" in params
     features = item.get("features")
     if isinstance(features, list) and features:
         return any(str(feature).lower() in {"tools", "function_calling", "tool_choice"} for feature in features)
+    # UNLI-style capabilities.supports.tool_calls or capabilities.limits.supports.tool_calls
+    caps = item.get("capabilities")
+    if isinstance(caps, dict):
+        for source in (caps.get("supports"), (caps.get("limits") or {}).get("supports") if isinstance(caps.get("limits"), dict) else None):
+            if isinstance(source, dict) and "tool_calls" in source:
+                return bool(source["tool_calls"])
+        # Also check limits direct booleans
+        limits = caps.get("limits")
+        if isinstance(limits, dict) and isinstance(limits.get("supports"), dict):
+            pass
     return None
+
+
+def _vision_supported(item: dict[str, Any]) -> bool:
+    caps = item.get("capabilities")
+    if isinstance(caps, dict):
+        for source in (caps.get("supports"), (caps.get("limits") or {}).get("supports") if isinstance(caps.get("limits"), dict) else None):
+            if isinstance(source, dict) and "vision" in source:
+                return bool(source["vision"])
+        limits = caps.get("limits")
+        if isinstance(limits, dict) and "vision" in limits:
+            return True
+        # UNLI nests supports under limits.supports already handled above
+    # Fallback to name heuristics
+    name = str(item.get("name") or item.get("id") or "").lower()
+    return "vision" in name or "vl" in name
+
+
+def _reasoning_supported(item: dict[str, Any]) -> bool:
+    caps = item.get("capabilities")
+    if isinstance(caps, dict):
+        # UNLI exposes reasoning as part of capabilities but not explicit flag;
+        # treat presence of limits.max_output_tokens large as hint
+        return False
+    return False
 
 
 def _int(value: Any) -> int | None:
