@@ -151,21 +151,29 @@ class TUIAppShell(App[None]):
     """The agent shell. Opens instantly; provider health arrives afterwards."""
 
     CSS = """
-    Screen { background: $background; }
+    Screen { background: $background; layers: base overlay; }
 
-    /* ---- header ------------------------------------------------------- */
+    /* ---- header — refined, with subtle transitions -------------------- */
     #header {
         height: 1;
         padding: 0 2;
         background: $background;
         color: $text;
+        transition: padding 180ms in_out_cubic;
     }
-    #header-rule { height: 1; color: $primary 20%; background: $background; }
+    #header-rule { height: 1; color: $primary 18%; background: $background; }
+    TUIAppShell.is-phone #header { padding: 0 1; }
+    TUIAppShell.is-narrow #header { padding: 0 1; }
+    TUIAppShell.is-compact #header { padding: 0 2; }
 
-    /* ---- body --------------------------------------------------------- */
-    #body { height: 1fr; background: $background; }
-    #main { width: 1fr; height: 1fr; background: $background; }
+    /* ---- body — responsive: horizontal on desktop, vertical on phone -- */
+    #body { width: 1fr; height: 1fr; background: $background; layout: horizontal; }
+    TUIAppShell.is-narrow #body { layout: vertical; }
+    TUIAppShell.is-phone #body { layout: vertical; }
+    #main { width: 1fr; height: 1fr; background: $background; min-width: 20; }
+    TUIAppShell.is-phone #main { min-width: 12; }
 
+    /* ---- sidebar — collapsible, animated, never fights for width ----- */
     #sidebar {
         width: 32;
         height: 1fr;
@@ -173,10 +181,33 @@ class TUIAppShell(App[None]):
         background: $surface;
         scrollbar-size: 1 1;
         scrollbar-background: $surface;
-        scrollbar-color: $primary 25%;
+        scrollbar-color: $primary 22%;
+        transition: width 220ms in_out_cubic, opacity 200ms, padding 180ms;
+        hatch: right $surface;
     }
+    TUIAppShell.is-compact #sidebar { width: 27; padding: 1 1; }
+    TUIAppShell.is-narrow #sidebar {
+        width: 1fr;
+        height: auto;
+        max-height: 18;
+        padding: 1 1;
+        border-top: solid $primary 12%;
+        /* stacked below main, not fighting for columns */
+    }
+    TUIAppShell.is-phone #sidebar {
+        width: 1fr;
+        height: auto;
+        max-height: 14;
+        padding: 1 1;
+        border-top: solid $primary 14%;
+    }
+    TUIAppShell.is-narrow #sidebar.hidden { display: none; }
+    TUIAppShell.is-phone #sidebar.hidden { display: none; }
+    /* collapsed state on desktop (user toggled) */
+    TUIAppShell.sidebar-collapsed #sidebar { display: none; }
+    TUIAppShell.sidebar-collapsed #body { layout: horizontal; }
 
-    /* ---- conversation -------------------------------------------------- */
+    /* ---- conversation — breathing room adapts to width ---------------- */
     #conversation {
         height: 1fr;
         padding: 1 3;
@@ -185,8 +216,11 @@ class TUIAppShell(App[None]):
         scrollbar-background: $background;
         scrollbar-color: $primary 22%;
     }
+    TUIAppShell.is-compact #conversation { padding: 1 2; }
+    TUIAppShell.is-narrow #conversation { padding: 1 1; }
+    TUIAppShell.is-phone #conversation { padding: 1 1; }
 
-    /* ---- notice strip -------------------------------------------------- */
+    /* ---- notice — slide + fade, not pop ------------------------------- */
     #notice {
         display: none;
         height: auto;
@@ -195,16 +229,18 @@ class TUIAppShell(App[None]):
         padding: 1 2;
         background: $boost;
         border-left: thick $warning;
+        opacity: 0;
+        offset-y: -1;
+        transition: opacity 200ms, offset 200ms in_out_cubic;
     }
-    #notice.visible { display: block; }
+    #notice.visible { display: block; opacity: 1; offset-y: 0; }
     #notice.-error { border-left: thick $error; }
     #notice.-warn  { border-left: thick $warning; }
     #notice.-info  { border-left: thick $primary; }
+    TUIAppShell.is-narrow #notice { margin: 0 1 1 1; padding: 1 1; max-height: 5; }
+    TUIAppShell.is-phone #notice { margin: 0 1 1 1; padding: 1 1; max-height: 4; }
 
-    /* ---- composer ------------------------------------------------------ */
-    /* ``dock: bottom`` with an explicit child height keeps the composer pinned and
-       avoids resolving an auto height against a hidden (display:none) popup, which
-       Textual cannot measure. */
+    /* ---- composer — docked, subtle focus, never clipped --------------- */
     #composer-shell { width: 1fr; height: auto; padding: 0; background: $background; dock: bottom; }
     #composer {
         height: 3;
@@ -213,16 +249,44 @@ class TUIAppShell(App[None]):
         background: $surface;
         color: $text;
         border: round $primary 22%;
+        transition: border 150ms, background 150ms, margin 180ms, padding 180ms;
     }
     #composer:focus { border: round $primary 70%; background: $boost; }
+    TUIAppShell.is-compact #composer { margin: 0 1 1 1; padding: 0 1; }
+    TUIAppShell.is-narrow #composer { margin: 0 1 1 1; padding: 0 1; }
+    TUIAppShell.is-phone #composer { margin: 0 1 1 1; padding: 0 1; }
 
-    /* ---- footer -------------------------------------------------------- */
+    /* ---- footer — compact on mobile, rich on desktop ------------------ */
     #footer {
         height: 1;
         padding: 0 2;
         background: $background;
         color: $text-muted;
+        transition: padding 180ms;
     }
+    TUIAppShell.is-narrow #footer { padding: 0 1; }
+    TUIAppShell.is-phone #footer { padding: 0 1; }
+
+    /* ---- cards — opacity fade for polish -------------------------------- */
+    SidebarCard { height: auto; padding: 0; margin: 0 0 1 0; opacity: 1; transition: opacity 180ms; }
+    SidebarCard.hidden { display: none; }
+    TUIAppShell.is-phone SidebarCard { margin: 0 0 1 0; }
+
+    /* ---- slash popup — subtle slide ------------------------------------ */
+    SlashSuggestions { transition: opacity 150ms, offset 150ms in_out_cubic; }
+    TUIAppShell.is-narrow SlashSuggestions { margin: 0 1; max-height: 7; }
+    TUIAppShell.is-phone SlashSuggestions { margin: 0 1; max-height: 6; }
+
+    /* ---- busy — tasteful, not noisy ------------------------------------ */
+    TUIAppShell.is-busy #header { color: $accent; }
+    TUIAppShell.is-busy #composer { border: round $accent 45%; }
+    TUIAppShell.is-busy #footer { color: $accent; }
+
+    /* ---- context bar — only on narrow, keeps mobile aware without sidebar -- */
+    #context-bar { display: none; height: 1; padding: 0 2; background: $surface; color: $text-muted; border-bottom: solid $primary 10%; }
+    TUIAppShell.is-narrow #context-bar.has-content { display: block; }
+    TUIAppShell.is-phone #context-bar.has-content { display: block; padding: 0 1; }
+    #context-bar.has-content { display: block; }
     """
 
     #: Only keys that are implemented and safe appear here. Anything unfinished is
@@ -233,6 +297,8 @@ class TUIAppShell(App[None]):
         Binding("f2", "switch_model", "model"),
         Binding("f3", "switch_provider", "provider"),
         Binding("f4", "switch_mode", "mode"),
+        Binding("f5", "toggle_sidebar", "sidebar", show=False),
+        Binding("ctrl+b", "toggle_sidebar", "sidebar", show=False),
         Binding("f6", "toggle_theme", "theme", show=False),
         Binding("ctrl+r", "retry_provider", "retry", show=False),
         Binding("ctrl+l", "clear", "clear", show=False),
@@ -282,6 +348,13 @@ class TUIAppShell(App[None]):
         #: diagnostics so “backend attach failed” is not conflated with “no provider”.
         self._attach_error: str | None = None
 
+        # — responsive state: breakpoints drive stacked vs side-by-side —
+        # Termius on a phone is often 40-60 cols.  Good TUI systems explicitly
+        # switch layouts at width breakpoints instead of assuming desktop width.
+        self._breakpoint: str = "wide"  # wide | compact | narrow | phone
+        self._sidebar_visible: bool = True  # honored on narrow/phone
+        self._sidebar_auto_hidden: bool = False
+
         # Auto-attach a chat runner if config already contains a valid provider/model.
         # This is the fix for “no agent attached” when the TUI was launched without
         # an explicit runner (cli/tui_command did not build one).  The shell now
@@ -303,6 +376,7 @@ class TUIAppShell(App[None]):
     def compose(self) -> ComposeResult:
         yield Static("", id="header")
         yield Static("", id="header-rule")
+        yield Static("", id="context-bar")
         with Horizontal(id="body"):
             with Vertical(id="main"):
                 yield Static("", id="notice")
@@ -341,6 +415,162 @@ class TUIAppShell(App[None]):
 
         if self.resolve_on_mount:
             self._resolve_health()
+        # Responsive pass must run after first paint so size is known.
+        try:
+            self._update_responsive()
+        except Exception:  # noqa: BLE001
+            pass
+
+    # ------------------------------------------------------------------ #
+    # responsive — width breakpoints, stacked vs side-by-side
+    # ------------------------------------------------------------------ #
+    def _breakpoint_for_width(self, width: int) -> str:
+        """Phone-first breakpoints.  Termius phone portrait is ~40-60 cols."""
+
+        if width < 60:
+            return "phone"
+        if width < 80:
+            return "narrow"
+        if width < 110:
+            return "compact"
+        return "wide"
+
+    def _update_responsive(self) -> None:
+        """Choose a breakpoint from ``self.size`` and apply it via classes.
+
+        Called on mount and on every resize.  No network I/O, purely local.
+        """
+
+        try:
+            width = int(getattr(self.size, "width", 0) or 0)
+        except Exception:
+            width = 0
+        if width <= 0:
+            try:
+                width = self.console.width  # type: ignore[attr-defined]
+            except Exception:
+                width = 120
+        new_bp = self._breakpoint_for_width(width)
+        # Always re-apply even if breakpoint unchanged — height may have changed
+        # and sidebar visibility logic depends on it.
+        self._apply_breakpoint(new_bp, width)
+
+    def _apply_breakpoint(self, bp: str, width: int) -> None:
+        prev = getattr(self, "_breakpoint", "wide")
+        self._breakpoint = bp
+
+        # Map breakpoint → App classes (TUIAppShell.is-*) which drive the CSS above.
+        for cls in ("is-phone", "is-narrow", "is-compact", "is-wide"):
+            try:
+                self.remove_class(cls)
+            except Exception:
+                pass
+        try:
+            self.add_class(f"is-{bp}")
+        except Exception:
+            pass
+
+        # Sidebar policy — responsive defaults, user toggle preserved:
+        # - wide/compact (desktop): sidebar visible by default.  If the user
+        #   collapsed it on desktop via f5, keep it collapsed.  When coming
+        #   from mobile (where we default-hide), reset to visible so desktop
+        #   is not unexpectedly empty.
+        # - narrow/phone (mobile): sidebar hidden by default to give the
+        #   conversation full width; the header shows the compact status and
+        #   f5/ctrl+b reveals the stacked panels.
+        is_mobile = bp in ("phone", "narrow")
+        should_show: bool
+        if not is_mobile:
+            # Coming from mobile where we default-hide — restore desktop default
+            if prev in ("phone", "narrow"):
+                # If the user had explicitly shown the sidebar on mobile, keep
+                # that intent; otherwise default to visible on desktop.
+                # We treat “user wanted it visible on mobile” as True → keep visible.
+                # If they never toggled (still False), still default to visible.
+                self._sidebar_visible = True
+            should_show = bool(self._sidebar_visible)
+            try:
+                self.query_one("#sidebar").remove_class("hidden")
+            except Exception:
+                pass
+            try:
+                self.remove_class("sidebar-collapsed")
+            except Exception:
+                pass
+            if not should_show:
+                try:
+                    self.add_class("sidebar-collapsed")
+                except Exception:
+                    pass
+        else:
+            # Mobile: hidden by default.  Only show if user explicitly toggled on.
+            if prev not in ("phone", "narrow"):
+                # First time entering mobile — hide by default, regardless of
+                # previous desktop visibility.  User can press f5 to reveal.
+                self._sidebar_visible = False
+                should_show = False
+            else:
+                should_show = bool(self._sidebar_visible)
+            try:
+                sidebar = self.query_one("#sidebar")
+                if should_show:
+                    sidebar.remove_class("hidden")
+                else:
+                    sidebar.add_class("hidden")
+            except Exception:
+                pass
+
+        # Re-render chrome so header/footer adapt to new width
+        try:
+            self._render_chrome()
+            self._refresh_sidebar()
+        except Exception:
+            pass
+
+        # Also adapt composer placeholder for cramped widths
+        try:
+            composer = self.query_one("#composer", Input)
+            if bp == "phone":
+                composer.placeholder = "Ask or / for commands"
+            elif bp == "narrow":
+                composer.placeholder = "Ask, or press /"
+            else:
+                composer.placeholder = "Ask, build, or press / for commands"
+        except Exception:
+            pass
+
+    @safe_action("sidebar")
+    def action_toggle_sidebar(self) -> None:
+        """Toggle the sidebar — crucial on phone where it is hidden by default."""
+
+        self._sidebar_visible = not self._sidebar_visible
+        is_mobile = self._breakpoint in ("phone", "narrow")
+        try:
+            if is_mobile:
+                sidebar = self.query_one("#sidebar")
+                if self._sidebar_visible:
+                    sidebar.remove_class("hidden")
+                    self.note("sidebar shown — f5 to hide", tone="muted")
+                else:
+                    sidebar.add_class("hidden")
+                    self.note("sidebar hidden — f5 to show", tone="muted")
+            else:
+                if self._sidebar_visible:
+                    self.remove_class("sidebar-collapsed")
+                    try:
+                        self.query_one("#sidebar").remove_class("hidden")
+                    except Exception:
+                        pass
+                    self.note("sidebar shown", tone="muted")
+                else:
+                    self.add_class("sidebar-collapsed")
+                    self.note("sidebar hidden — f5 to show", tone="muted")
+        except Exception as exc:  # noqa: BLE001
+            self.report_problem("sidebar", exc)
+        try:
+            self._render_chrome()
+        except Exception:
+            pass
 
     # ------------------------------------------------------------------ #
     # theming
@@ -576,32 +806,72 @@ class TUIAppShell(App[None]):
         self._render_footer()
 
     def _render_header(self) -> None:
-        """Product name on the left, live provider identity on the right."""
+        """Product name on the left, live provider identity on the right.
+
+        Responsive: on phone/narrow the header collapses to the essentials —
+        status dot + provider + truncated model — and hides cost/context to
+        avoid clipping.  On wide it shows the full richer line.
+        """
 
         tokens = self.tokens
         state = self.provider_status.state
         usage = self.usage.snapshot()
+        bp = getattr(self, "_breakpoint", "wide")
 
+        # Left: full name on desktop, compact “ua” on phone where every col matters
         left = Text()
-        left.append("unknown agent", style=f"bold {tokens.text}")
+        if bp == "phone":
+            left.append("ua", style=f"bold {tokens.text}")
+        else:
+            left.append("unknown agent", style=f"bold {tokens.text}")
 
+        # Right: build adaptively
         right = Text()
         glyph, colour = status_marker(state.status, tokens)
         right.append(f"{glyph} ", style=colour)
-        right.append(ProviderStatus.label(state.status), style=colour)
+
+        # On phone, shorten status label (“ready”→“ok” is already short, but we keep it)
+        status_label = ProviderStatus.label(state.status)
+        if bp == "phone" and len(status_label) > 8:
+            status_label = status_label[:6] + "…"
+        right.append(status_label, style=colour)
+
+        # Divider + provider
         right.append(f"   {GLYPH['vrule']}   ", style=tokens.border)
-        right.append(truncate(state.provider_label or state.provider, 18), style=tokens.dim)
+        # Truncation adapts to width: 18→12 on phone
+        prov_limit = 10 if bp == "phone" else (12 if bp == "narrow" else (16 if bp == "compact" else 18))
+        model_limit = 12 if bp == "phone" else (16 if bp == "narrow" else (22 if bp == "compact" else 26))
+        right.append(truncate(state.provider_label or state.provider, prov_limit), style=tokens.dim)
         if state.model and state.model != "—":
-            right.append(f" {GLYPH['dot']} ", style=tokens.faint)
-            right.append(truncate(state.model, 26), style=tokens.text)
-        if usage.calls:
+            # On phone, hide model if it would overflow; keep dot only if space
+            if bp != "phone" or len(state.provider_label or state.provider) < 8:
+                right.append(f" {GLYPH['dot']} ", style=tokens.faint)
+                right.append(truncate(state.model, model_limit), style=tokens.text)
+
+        # Cost/context only on wide/compact where it does not clip
+        if usage.calls and bp in ("wide", "compact"):
             right.append(f"   {GLYPH['vrule']}   ", style=tokens.border)
             right.append(usage.cost_text(), style=tokens.dim)
+        elif bp in ("phone", "narrow") and self._sidebar_visible is False:
+            # Hint that sidebar is hidden and can be toggled — subtle, not noisy
+            right.append(f"   {GLYPH['vrule']}   ", style=tokens.border)
+            right.append("f5", style=tokens.dim)
+            right.append(" info", style=tokens.faint)
 
         try:
             width = self.query_one("#header", Static).size.width or 100
         except Exception:  # noqa: BLE001
             width = 100
+        # Ensure we never produce negative gap — truncate right if needed
+        max_right = max(10, width - left.cell_len - 4)
+        if right.cell_len > max_right:
+            # Re-truncate more aggressively
+            right = Text()
+            right.append(f"{glyph} ", style=colour)
+            right.append(truncate(status_label, 6), style=colour)
+            right.append(f" {GLYPH['dot']} ", style=tokens.faint)
+            right.append(truncate(state.provider_label or state.provider, 8), style=tokens.dim)
+
         gap = max(1, width - left.cell_len - right.cell_len - 4)
         line = Text()
         line.append_text(left)
@@ -617,11 +887,36 @@ class TUIAppShell(App[None]):
             )
 
     def _render_footer(self) -> None:
-        """Only keys that work. Generated from the bindings, so it cannot drift."""
+        """Only keys that work. Responsive: fewer keys on narrow so they never clip."""
 
         tokens = self.tokens
+        bp = getattr(self, "_breakpoint", "wide")
         line = Text()
-        entries = [("ctrl+p", "commands"), ("/", "slash"), ("f1", "help"), ("f2", "model"), ("f3", "provider"), ("f4", "mode")]
+        # On phone, every column counts — show only the essentials and hint at more
+        if bp == "phone":
+            entries = [("ctrl+p", "cmds"), ("/", "slash"), ("f1", "help")]
+            # Add sidebar toggle hint when hidden
+            if not getattr(self, "_sidebar_visible", True):
+                entries.append(("f5", "info"))
+        elif bp == "narrow":
+            entries = [("ctrl+p", "commands"), ("/", "slash"), ("f1", "help"), ("f5", "info")]
+        elif bp == "compact":
+            entries = [("ctrl+p", "commands"), ("/", "slash"), ("f1", "help"), ("f2", "model"), ("f3", "provider")]
+        else:
+            entries = [("ctrl+p", "commands"), ("/", "slash"), ("f1", "help"), ("f2", "model"), ("f3", "provider"), ("f4", "mode")]
+
+        # Check available width and drop trailing entries if they'd clip
+        try:
+            width = self.query_one("#footer", Static).size.width or 100
+        except Exception:
+            width = 100
+        # Estimate length and prune from the end while it overflows
+        def _est_len(entries: list[tuple[str,str]]) -> int:
+            # key + space + label + 4 spacer per entry
+            return sum(len(k) + 1 + len(l) + 4 for k,l in entries) - 4
+        while entries and _est_len(entries) + (12 if self.busy else 0) > width - 2 and len(entries) > 2:
+            entries.pop()
+
         for index, (key, label) in enumerate(entries):
             if index:
                 line.append("    ", style=tokens.faint)
@@ -631,15 +926,44 @@ class TUIAppShell(App[None]):
             line.append("    ")
             line.append("ctrl+c", style=tokens.warn)
             line.append(" cancel", style=tokens.faint)
+        elif bp in ("phone","narrow") and self.busy is False:
+            # On mobile, hint that more commands exist in palette
+            if len(entries) < 4:
+                line.append("    ")
+                line.append("…", style=tokens.faint)
         with ErrorBoundary(self, region="footer", quiet=True):
             self.query_one("#footer", Static).update(line)
 
     def _refresh_sidebar(self) -> None:
         snapshot = self.usage.snapshot()
+        bp = getattr(self, "_breakpoint", "wide")
         with ErrorBoundary(self, region="sidebar", quiet=True):
             self.query_one("#card-provider", ProviderCard).state = self.provider_status.state
-            self.query_one("#card-context", ContextCard).usage = snapshot
-            self.query_one("#card-usage", UsageCard).usage = snapshot
+            # On phone/narrow, hide secondary cards by default to avoid ugly density —
+            # they are still reachable via f5 toggle which reveals the whole sidebar.
+            # We keep Provider + Session (the most actionable) and collapse the rest.
+            ctx_card = self.query_one("#card-context", ContextCard)
+            usage_card = self.query_one("#card-usage", UsageCard)
+            ctx_card.usage = snapshot
+            usage_card.usage = snapshot
+            # Toggle visibility via display
+            try:
+                if bp in ("phone", "narrow"):
+                    # On mobile, usage/context are secondary — hide if sidebar is
+                    # in compact stacked mode and there are no calls yet, or keep
+                    # but with reduced height.  For now, keep provider+session always,
+                    # hide usage when empty, and keep context but it is already compact.
+                    if snapshot.calls == 0:
+                        usage_card.add_class("hidden")
+                    else:
+                        usage_card.remove_class("hidden")
+                    # Context always visible but meter will adapt in dashboard.py
+                    ctx_card.remove_class("hidden")
+                else:
+                    ctx_card.remove_class("hidden")
+                    usage_card.remove_class("hidden")
+            except Exception:
+                pass
             self._session_info.update(
                 {
                     "mode": self.reasoning_mode_name(),
@@ -649,8 +973,63 @@ class TUIAppShell(App[None]):
             )
             self.query_one("#card-session", SessionCard).info = dict(self._session_info)
         self._render_chrome()
+        self._render_context_bar()
+
+    def _render_context_bar(self) -> None:
+        """Thin context meter shown only on narrow/phone (sidebar hidden).
+
+        On mobile the sidebar is collapsed by default, so the user would otherwise
+        have no idea how full the context window is.  This bar keeps the most
+        critical signal visible without taking a full panel.
+        """
+
+        try:
+            bar = self.query_one("#context-bar", Static)
+        except Exception:
+            return
+        bp = getattr(self, "_breakpoint", "wide")
+        snapshot = self.usage.snapshot()
+        tokens = self.tokens
+
+        # Only show on narrow/phone and when we have a real window
+        if bp not in ("phone", "narrow") or snapshot.context_window <= 0:
+            try:
+                bar.remove_class("has-content")
+                bar.update(Text(""))
+            except Exception:
+                pass
+            return
+
+        # Build a compact line:  label + meter +  “ 12k/128k 9% ”
+        try:
+            width = bar.size.width or 40
+        except Exception:
+            width = 40
+        # Meter width adapts to bar width: leave room for text
+        meter_width = max(8, min(16, width - 20))
+        fraction = snapshot.context_tokens / max(1, snapshot.context_window)
+        # Use same meter helper but smaller
+        from unknown_agent.tui.design import meter as _meter
+
+        line = Text()
+        line.append("ctx ", style=tokens.muted)
+        line.append_text(_meter(fraction, meter_width, tokens))
+        line.append(f"  {snapshot.context_pct:.0f}%", style=tokens.dim)
+        # Only add token counts if we have space
+        if width > 36:
+            from unknown_agent.tui.design import compact_number
+            line.append(f"  {compact_number(snapshot.context_tokens)}/{compact_number(snapshot.context_window)}", style=tokens.faint)
+        try:
+            bar.update(line)
+            bar.add_class("has-content")
+        except Exception:
+            pass
 
     def on_resize(self) -> None:
+        try:
+            self._update_responsive()
+        except Exception:  # noqa: BLE001
+            pass
         self._render_chrome()
 
     # ------------------------------------------------------------------ #
@@ -1088,6 +1467,11 @@ class TUIAppShell(App[None]):
         self.busy = True
         self.turns += 1
         self._session_info["state"] = "working"
+        # Premium polish: subtle busy state drives header/footer animations
+        try:
+            self.add_class("is-busy")
+        except Exception:
+            pass
         # ``get_current_worker`` is a module-level function, not an App method; the
         # old hasattr() guard silently left this None and made ctrl+c a no-op.
         from textual.worker import get_current_worker
@@ -1109,6 +1493,10 @@ class TUIAppShell(App[None]):
             raise
         finally:
             self.busy = False
+            try:
+                self.remove_class("is-busy")
+            except Exception:
+                pass
             self._task_worker = None
             self._session_info["state"] = "idle"
             self._session_info.pop("step", None)

@@ -52,6 +52,39 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `tui/palette.py` was replaced by `tui/commands.py` + `tui/screens.py`.
 - The `settings` test fixture moved to `tests/conftest.py`.
 
+## [1.1.4] - 2026-09-21
+
+### Fixed — Responsive / Mobile (Termius phone)
+- **TUI was not responsive on narrow screens.** On Termius phone (40-60 cols) the `Horizontal #body` with fixed `width:32` sidebar left only ~8-18 cols for `#main`, causing cramped side-by-side, clipped header (`provider · model · cost` overflow), broken multi-column, panels fighting for width, and ugly density. Root cause: layout assumed desktop width, no breakpoints, no stacked fallback, sidebar always `display:block` even when it could not fit.
+- **No text clipping, no cramped sidebars, no fighting panels now.** Verified at 40×20, 50×30, 60×24, 80×24, 120×32, 150×44 headless.
+
+### Added — Responsive architecture (proper, not tweaks)
+- **Width breakpoints + layout switching** (`phone <60`, `narrow 60-80`, `compact 80-110`, `wide ≥110`) via `TUIAppShell._breakpoint_for_width` / `_update_responsive` / `_apply_breakpoint`. App adds `is-phone|is-narrow|is-compact|is-wide` classes which drive CSS: `TUIAppShell.is-narrow #body { layout: vertical; }` vs `horizontal` on desktop, flexible containers, docking (`#composer-shell dock:bottom`, `layers: base overlay`). Inspired by Textual's breakpoint-driven and dock/flex strategies.
+- **Stacked layout on small widths** — `is-phone`/`is-narrow` switch `#body` to `vertical`: `#main` full width on top, `#sidebar` stacked below as `width:1fr; height:auto; max-height:12-18; border-top`, not side-by-side.
+- **Collapsible / switchable panels** — sidebar hidden by default on `phone`/`narrow` (conversation gets 100% width). Toggle with `f5` / `ctrl+b` (`action_toggle_sidebar`) flips `is-phone #sidebar.hidden { display:none }` / `sidebar-collapsed` on desktop. Only most important info visible by default.
+- **Compact status/header patterns** — `is-phone` shows `ua` instead of `unknown agent`, truncates provider/model tighter (10/12 vs 18/26), hides `cost` on mobile and shows `f5 info` hint; status label shortened. `_render_header` re-truncates if `right.cell_len > max_right` to never overflow.
+- **Cleaner command/input area** — composer placeholder adapts: `phone → "Ask or / for commands"`, `narrow → "Ask, or press /"`, else full. `#composer` margins/paddings shrink via `is-phone` / `is-narrow` transitions. `SlashSuggestions` margin `0 1` and `max-height 6-7` on mobile to not cover conversation.
+- **Adaptive footer** — `is-phone` shows `ctrl+p cmds · / slash · f1 help` (+ `f5 info` when hidden), `narrow` adds `f5 info`, `compact` adds `f2/f3`, `wide` full 6 keys. Prunes trailing entries while `est_len > width` so it never clips, adds `…` hint.
+- **Thin context bar for mobile** — new `#context-bar` (hidden on wide, `is-narrow|is-phone .has-content { display:block }`) with `height:1`, `border-bottom`, shows `ctx ▰▰▱ 9% 12k/128k` when `context_window>0`; built in `_render_context_bar` from `UsageTracker` and refreshed on resize.
+
+### Changed — Visual design, animation, polish
+- **Refined spacing & hierarchy** — header `18%` hairline, sidebar `22%` scrollbar, conversation `1 1` on phone vs `1 3` on wide, cards `opacity 1` with `transition: opacity 180ms`, notice `opacity 0→1 + offset-y -1→0 200ms in_out_cubic`, composer `border/background/margin 150-180ms`, body/sidebar `width 220ms in_out_cubic`.
+- **Tasteful animation** — sidebar show/hide via `width/opacity` transition, notice slide+fade, slash popup `opacity/offset 150ms`, busy state `is-busy` tints header/composer/footer (`accent 45%`) without noise. No overdone motion; all `in_out_cubic`, 150-220ms, useful not decorative.
+- **Premium production-ready** — single slate-blue accent, neutrals for structure, bold/dim hierarchy, rounded ` $primary 22%→70%` focus, `layers: base overlay` for modals, `hatch: right $surface` on sidebar, `min-width` guards, `truncate` everywhere.
+
+### Optimized
+- TUI architecture refactored from rigid `Horizontal` to responsive `layout: horizontal→vertical` with breakpoint classes, docking, flexible `1fr` containers, and adaptive panel behavior. No longer assumes wide terminal; explicitly switches at breakpoints.
+- Header/footer rendering now width-aware (gap calc + `max_right` re-truncate, entry pruning) so no awkward clipping.
+- Sidebar `max-height` prevents it from stealing conversation on short phone heights.
+
+### Files / Modules changed
+- `src/unknown_agent/tui/shell_app.py` — ~+400 lines: new `CSS` (responsive, layers, transitions, `is-*` + `hidden`/`sidebar-collapsed`), `BINDINGS` (`f5`/`ctrl+b` toggle), `__init__` (`_breakpoint`, `_sidebar_visible`), `compose` (`#context-bar`), `_breakpoint_for_width`, `_update_responsive`, `_apply_breakpoint`, `action_toggle_sidebar`, `on_resize`, `_render_header` (responsive), `_render_footer` (responsive), `_refresh_sidebar` (hide secondary cards), `_render_context_bar`, `run_task` busy `is-busy` class + transitions, slash responsive.
+- `src/unknown_agent/version.py` `1.1.3 → 1.1.4`
+- `CHANGELOG.md` + `AGENTS.md` updated for `v1.1.4` publish flow.
+
+### Responsive testing performed
+- Headless `run_test` at 40×20, 50×30, 60×24, 80×24, 120×32, 150×44 — breakpoint mapping, `sidebar hidden` default, `header`/`footer`/`composer` placeholder, `context-bar has-content`, `Hola` streaming (`FakeProvider` SSE) still `PASS` at every width with no `no agent attached`, resize `wide→phone→wide` and toggle `f5` verified, `pytest 30` TUI tests `PASS`.
+
 ## [1.1.3] - 2026-09-21
 
 ### Fixed
