@@ -373,8 +373,108 @@ def _latest_version() -> str | None:
 
 
 # --------------------------------------------------------------------------- #
-# tui (phase two surface, honest stub)
+# tui — interactive shell with session history + resume
 # --------------------------------------------------------------------------- #
+def _parse_tui_args(extra: list[str]) -> tuple[str | None, bool, str]:
+    """Extract ``--resume <id>`` and ``--list`` from the loose ``ctx.args``.
+
+    Returns ``(resume_id, list_mode, first_task)``.  ``resume_id`` is
+    ``None`` for a fresh session, a string for resume (``"latest"`` if bare
+    ``--resume`` was given), and ``list_mode`` signals ``--list``/``--ls``.
+    """
+    args = list(extra or [])
+    resume_id: str | None = None
+    list_mode = False
+    remaining: list[str] = []
+    i = 0
+    while i < len(args):
+        tok = args[i]
+        if tok in {"--resume", "--resume-id"}:
+            # ``--resume`` may be bare (resume latest) or ``--resume <id>``
+            if i + 1 < len(args) and not args[i + 1].startswith("-"):
+                resume_id = args[i + 1].strip()
+                i += 2
+            else:
+                resume_id = "latest"
+                i += 1
+            continue
+        if tok.startswith("--resume="):
+            resume_id = tok.split("=", 1)[1].strip() or "latest"
+            i += 1
+            continue
+        if tok in {"--list", "--ls", "-l"}:
+            list_mode = True
+            i += 1
+            continue
+        if tok in {"--help", "-h"}:
+            remaining.append(tok)
+            i += 1
+            continue
+        remaining.append(tok)
+        i += 1
+    first_task = " ".join(remaining).strip()
+    # Also check env-style bare id after --resume when split differently
+    return resume_id, list_mode, first_task
+
+
+def _print_tui_resume(session: Any | None, *, store: Any | None = None, fallback_id: str | None = None) -> None:
+    """Always print the exact resume command — even on Ctrl-C.
+
+    This is the exit hook the spec requires.  It runs in a finally block so
+    KeyboardInterrupt / SystemExit cannot silence it.  Uses plain output so
+    it survives even when the TUI has taken the terminal.
+    """
+    try:
+        # Resolve session id/name from whichever source we have
+        sid = ""
+        name = ""
+        short = ""
+        if session is not None:
+            sid = getattr(session, "id", "") or ""
+            name = getattr(session, "name", "") or getattr(session, "title", "") or ""
+            short = getattr(session, "short_id", sid[:8] if sid else "")
+        elif fallback_id:
+            sid = fallback_id
+            short = sid[:8]
+        elif store is not None:
+            try:
+                latest = store.latest()
+                if latest is not None:
+                    sid = latest.id
+                    name = getattr(latest, "name", "") or ""
+                    short = getattr(latest, "short_id", sid[:8])
+            except Exception:
+                pass
+        target = short or sid or "latest"
+        display = name or f"Session {short}" if short else "session"
+        # Use output.raw/blank for human, and also plain print for safety after TUI teardown
+        try:
+            output.blank()
+            if sid and name:
+                output.print(f"[ua.ok]session saved[/ua.ok]  [ua.muted]{display}[/ua.muted]  [ua.dim]({short})[/ua.dim]")
+            elif sid:
+                output.print(f"[ua.ok]session saved[/ua.ok]  [ua.dim]({short})[/ua.dim]")
+            else:
+                output.print(f"[ua.ok]session saved[/ua.ok]")
+            output.print(f"[ua.muted]resume with:[/ua.muted]  [ua.accent]ua tui --resume {target}[/ua.accent]")
+            output.print(f"[ua.muted]     or:[/ua.muted]  [ua.dim]ua sessions resume {target}[/ua.dim]")
+            output.blank()
+        except Exception:
+            pass
+        # Fallback plain print in case rich output is swallowed
+        try:
+            import sys
+            msg = f"\nSession '{name}' ({short}) saved.\nResume with: ua tui --resume {target}  |  ua sessions resume {target}\n"
+            if sid and name:
+                sys.stderr.write(msg)
+            elif sid:
+                sys.stderr.write(f"\nSession {short} saved. Resume with: ua tui --resume {target}\n")
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+
 def tui_command(ctx: typer.Context) -> None:
     """Launch the interactive TUI shell.
 
@@ -383,26 +483,193 @@ def tui_command(ctx: typer.Context) -> None:
     (HTTP 402) or a dead network all resolve into status inside the running UI, where
     the user can switch provider, switch model, reconfigure or retry.  Refusing to
     launch because a remote account cannot pay is the bug this replaced.
+
+    Session history:
+      * every launch creates a session with an id + name + timestamps
+      * ``--resume <id>`` resumes that transcript (``--resume`` alone resumes latest)
+      * ``--list`` shows the polished recent-sessions list without launching the TUI
+      * inside the TUI: ``/sessions``, ``/history``, ``/resume``, ``f7`` or ``ctrl+o``
+        open the same picker; ``ctrl+q`` / ``Ctrl-C`` always prints the resume command
     """
 
     import asyncio
 
     runtime = ctx.obj
     settings = None
+    paths = None
     try:
-        settings = runtime.load().settings if runtime is not None else None
+        loaded = runtime.load() if runtime is not None else None
+        settings = loaded.settings if loaded is not None else None
+        paths = loaded.paths if loaded is not None else None
     except Exception as exc:  # noqa: BLE001 - even a broken config still gets a UI
         output.print(f"[ua.warn]config could not be loaded ({exc}); starting with defaults[/ua.warn]")
+
+    # Parse loose args for --resume / --list / first_task
+    extra = list(getattr(ctx, "args", None) or [])
+    resume_id, list_mode, first_task = _parse_tui_args(extra)
+
+    # Resolve store path for both list and run
+    store = None
+    db_path = None
+    try:
+        from unknown_agent.tui.history import TuiSessionStore
+        if paths is not None:
+            db_path = paths.state_dir / "tui_sessions.db"
+            transcripts_dir = paths.state_dir / "tui_transcripts"
+        else:
+            from unknown_agent.config.paths import resolve_paths
+            _paths = resolve_paths(Path.cwd())
+            db_path = _paths.state_dir / "tui_sessions.db"
+            transcripts_dir = _paths.state_dir / "tui_transcripts"
+        # Ensure parent exists for list mode too
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+        transcripts_dir.mkdir(parents=True, exist_ok=True)
+        store = TuiSessionStore(db_path, transcripts_dir)
+    except Exception as exc:  # noqa: BLE001
+        # Store unavailable — TUI will degrade gracefully (no history) but still launch
+        store = None
+        if list_mode:
+            output.print(f"[ua.warn]could not open session store: {exc}[/ua.warn]")
+            raise typer.Exit(ExitCode.FAILURE) from None
+
+    # --list: show polished table without launching the TUI
+    if list_mode:
+        assert store is not None
+        try:
+            sessions = store.list(limit=30)
+        finally:
+            try:
+                store.close()
+            except Exception:
+                pass
+        if runtime.is_machine:
+            runtime.emit_json({"sessions": [s.to_dict() for s in sessions], "count": len(sessions)})
+            raise typer.Exit(ExitCode.OK)
+        if not sessions:
+            output.print("[ua.muted]no tui sessions yet — launch with `ua tui`[/ua.muted]")
+            raise typer.Exit(ExitCode.OK)
+        # Polished human table — not raw logs
+        from unknown_agent.ui.renderers import data_table
+        # Find current marker
+        try:
+            marker = store.get_current_marker() if store else None
+        except Exception:
+            marker = None
+        rows = []
+        for rec in sessions:
+            cur = "● current" if rec.id == marker else rec.status
+            rows.append(
+                (
+                    rec.display_name[:32],
+                    rec.short_id,
+                    rec.date_str,
+                    rec.time_str,
+                    f"{rec.provider or '—'}/{rec.model or '—'}"[:28],
+                    f"{rec.turns}τ {rec.message_count}✉",
+                    cur,
+                )
+            )
+        # Use data_table for a polished look
+        output.print(data_table(["name", "id", "date", "time", "provider/model", "activity", "status"], rows, title=f"tui sessions ({len(rows)})"))
+        output.blank()
+        output.print("[ua.muted]resume with:[/ua.muted] ua tui --resume <id>   [ua.dim](or 'latest')[/ua.dim]")
+        raise typer.Exit(ExitCode.OK)
+
+    # Validate --resume target before launching, so a typo is reported immediately
+    if resume_id is not None and resume_id not in {"latest", "last", "last"} and store is not None:
+        # Allow short-id; check existence
+        found = store.get(resume_id)
+        if found is None:
+            # Try substring search hint
+            output.print(f"[ua.warn]no tui session matching {resume_id!r}[/ua.warn]")
+            try:
+                recent = store.list(limit=5)
+                if recent:
+                    output.print("[ua.muted]recent:[/ua.muted]")
+                    for rec in recent[:3]:
+                        output.print(f"  {rec.short_id}  {rec.display_name}  {rec.datetime_str}")
+                    output.print(f"[ua.muted]hint:[/ua.muted] ua tui --resume latest  or  ua tui --list")
+            except Exception:
+                pass
+            try:
+                store.close()
+            except Exception:
+                pass
+            raise typer.Exit(ExitCode.USAGE)
 
     try:
         from unknown_agent.tui.shell_app import run_app_shell
     except ImportError:
         output.print("[ua.warn]The TUI needs Textual.[/ua.warn]")
         output.print("  pipx inject unknown-agent textual")
+        try:
+            if store is not None:
+                store.close()
+        except Exception:
+            pass
         raise typer.Exit(ExitCode.USAGE) from None
 
-    first_task = " ".join(ctx.args) if getattr(ctx, "args", None) else ""
-    asyncio.run(run_app_shell(settings, first_task=first_task))
+    # We keep a reference to the app's session for the exit hook.
+    # ``run_app_shell`` returns the app instance; we read _tui_session from it.
+    app_session = None
+    app_obj = None
+    # Also remember resume_id for the exit hook in case app_session is None
+    exit_resume_target = resume_id
+    _did_print = False
+
+    def _do_print_once() -> None:
+        nonlocal _did_print, app_session, exit_resume_target
+        if _did_print:
+            return
+        _did_print = True
+        try:
+            # Refresh app_session from app_obj if available
+            if app_session is None and app_obj is not None:
+                try:
+                    app_session = getattr(app_obj, "_tui_session", None)
+                    if app_session is not None:
+                        exit_resume_target = getattr(app_session, "id", exit_resume_target) or exit_resume_target
+                except Exception:
+                    pass
+            _print_tui_resume(app_session, store=store, fallback_id=exit_resume_target)
+        except Exception:
+            pass
+
+    try:
+        app_obj = asyncio.run(run_app_shell(settings, first_task=first_task, resume_id=resume_id, tui_store=store))
+        # run_app_shell returns the app; its _tui_session is the authoritative current
+        try:
+            app_session = getattr(app_obj, "_tui_session", None)
+            # Prefer the app's session id for the resume command (it may have changed via picker)
+            if app_session is not None:
+                exit_resume_target = getattr(app_session, "id", exit_resume_target) or exit_resume_target
+        except Exception:
+            pass
+        _do_print_once()
+    except KeyboardInterrupt:
+        _do_print_once()
+        raise typer.Exit(ExitCode.INTERRUPTED) from None
+    except SystemExit as exc:
+        # typer.Exit raises SystemExit — print on normal exit (code 0) if not already printed
+        try:
+            code = int(getattr(exc, "code", 0) or 0)
+            if code == 0 and not _did_print:
+                _do_print_once()
+        except Exception:
+            pass
+        raise
+    except BaseException:
+        if not _did_print:
+            _do_print_once()
+        raise
+    finally:
+        # Ensure store closed if we own it and app didn't already
+        try:
+            if store is not None and getattr(app_obj, "_tui_store", None) is not store:
+                store.close()
+        except Exception:
+            pass
+
     raise typer.Exit(ExitCode.OK)
 
 

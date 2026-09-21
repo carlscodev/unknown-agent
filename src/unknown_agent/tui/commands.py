@@ -353,6 +353,12 @@ def build_default_commands(shell: Any) -> list[Command]:
         return "a task is running" if getattr(shell, "busy", False) else ""
 
     return [
+        Command("sessions", "Session history", "recent sessions — resume or start new (f7)", "session", "f7", "sessions",
+                handler=shell.action_show_sessions),
+        Command("history", "Session history", "same as /sessions — polished list with resume", "session", "", "history",
+                handler=shell.action_show_sessions),
+        Command("resume", "Resume session", "open picker to resume a previous session", "session", "", "resume",
+                handler=shell.action_show_sessions),
         Command("model", "Switch model", "choose a model from this provider", "provider", "f2", "model",
                 handler=shell.action_switch_model, enabled=needs_provider),
         Command("provider", "Switch provider", "change the active provider profile", "provider", "f3", "provider",

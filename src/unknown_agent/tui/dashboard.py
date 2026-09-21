@@ -234,7 +234,8 @@ class UsageCard(SidebarCard):
 
 
 class SessionCard(SidebarCard):
-    """What the agent is doing, under which reasoning profile, for how long."""
+    """What the agent is doing, under which reasoning profile, for how long — plus
+    the current session identity so the user always knows where resume will land."""
 
     info: reactive[dict[str, Any]] = reactive(dict, layout=True)
 
@@ -262,4 +263,39 @@ class SessionCard(SidebarCard):
         if info.get("step"):
             blocks.append(Text(""))
             blocks.append(Text(truncate(str(info["step"]), 28), style=tokens.muted))
+
+        # — current TUI session — show name, id, date/time, provider/model so the
+        # user can identify which session they are on without opening the picker.
+        session_name = info.get("session_name") or info.get("session_title") or ""
+        session_id = info.get("session_id") or info.get("session_short") or ""
+        if session_name or session_id:
+            blocks.append(Text(""))
+            # Name as primary value, id as secondary — polished, not raw logs
+            if session_name:
+                blocks.append(kv("session", truncate(str(session_name), 22), tokens, value_style=f"bold {tokens.text}"))
+            if session_id:
+                blocks.append(kv("id", truncate(str(session_id), 16), tokens, value_style=tokens.accent_dim))
+            # Date/time on one line when both present
+            date = info.get("session_date") or info.get("date") or ""
+            tm = info.get("session_time") or info.get("time") or ""
+            if date or tm:
+                when = f"{date} {tm}".strip()
+                blocks.append(kv("created", truncate(when, 22), tokens, value_style=tokens.muted))
+            # Provider/model if available and not duplicate
+            provider = info.get("provider") or info.get("session_provider") or ""
+            model = info.get("model") or info.get("session_model") or ""
+            if provider or model:
+                pm = f"{provider}/{model}" if provider and model else (provider or model)
+                blocks.append(kv("using", truncate(str(pm), 22), tokens, value_style=tokens.dim))
+            # Activity — turns/messages hint that this is a resume-able transcript
+            s_turns = info.get("session_turns") or ""
+            if s_turns and str(s_turns) != str(info.get("turns", "")):
+                blocks.append(kv("history", f"{s_turns} turns", tokens, value_style=tokens.faint))
+            # Resume hint — subtle, not noisy, but always there so exit isn't a surprise
+            if session_id:
+                blocks.append(Text(""))
+                hint = Text()
+                hint.append("resume ", style=tokens.faint)
+                hint.append(f"ua tui --resume {session_id}", style=tokens.muted)
+                blocks.append(hint)
         return Group(*blocks)

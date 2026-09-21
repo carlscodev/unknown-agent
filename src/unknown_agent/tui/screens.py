@@ -26,7 +26,7 @@ from textual.widgets import Input, Label, ListItem, ListView, Static
 from unknown_agent.tui.commands import Command, CommandRegistry
 from unknown_agent.tui.design import GLYPH, Tokens, truncate
 
-__all__ = ["Choice", "ChooserScreen", "CommandPalette", "ModelSelector", "ProviderSelector", "ModeSelector", "HelpScreen", "ConfirmScreen"]
+__all__ = ["Choice", "ChooserScreen", "CommandPalette", "ModelSelector", "ProviderSelector", "ModeSelector", "HelpScreen", "ConfirmScreen", "SessionHistoryScreen", "SessionDetailScreen"]
 
 
 #: Shared chrome for every modal. One border weight, one radius, generous internal
@@ -501,6 +501,8 @@ class HelpScreen(ModalScreen[None]):
             ("f3", "switch provider"),
             ("f4", "reasoning mode"),
             ("f6", "toggle light/dark"),
+            ("f7", "session history / resume"),
+            ("ctrl+o", "session history"),
             ("ctrl+r", "re-check the provider"),
             ("ctrl+l", "clear the conversation"),
             ("ctrl+c", "cancel the running task"),
@@ -526,6 +528,325 @@ class HelpScreen(ModalScreen[None]):
             self.query_one("#help-scroll", VerticalScroll).scroll_relative(y=amount, animate=False)
         except Exception:  # noqa: BLE001
             pass
+
+    def action_close(self) -> None:
+        self.dismiss(None)
+
+
+# --------------------------------------------------------------------------- #
+# session history — polished list + resume
+# --------------------------------------------------------------------------- #
+class SessionHistoryScreen(ModalScreen[str | None]):
+    """Polished recent-sessions list.  Returns the chosen session ``id`` or ``None``."""
+
+    BINDINGS = [
+        Binding("escape", "cancel", "cancel", show=False),
+        Binding("down", "move_down", "down", show=False, priority=True),
+        Binding("up", "move_up", "up", show=False, priority=True),
+        Binding("enter", "accept", "resume", show=False, priority=True),
+        Binding("d", "delete", "delete", show=False),
+        Binding("n", "new_session", "new", show=False),
+    ]
+
+    DEFAULT_CSS = _MODAL_CSS + """
+    SessionHistoryScreen { align: center middle; background: $background 60%; }
+    SessionHistoryScreen > #session-chooser {
+        width: 96; max-width: 96%; height: 88%; max-height: 88%;
+        background: $surface; border: round $primary 45%; padding: 1 2;
+    }
+    #session-title { color: $text; text-style: bold; height: 1; }
+    #session-caption { color: $text-muted; height: auto; margin-bottom: 1; }
+    #session-meta { color: $text-muted; height: 1; margin-bottom: 1; }
+    #session-input {
+        border: round $primary 25%; background: $boost; height: 3; padding: 0 1; margin-bottom: 1; color: $text;
+    }
+    #session-input:focus { border: round $primary 60%; }
+    #session-list {
+        height: 1fr; background: transparent; border: none; padding: 0; scrollbar-size: 1 1;
+    }
+    #session-list > ListItem { background: transparent; padding: 0 1; height: auto; border-left: blank; }
+    #session-list > ListItem.-highlight,
+    #session-list:focus > ListItem.-highlight { background: $accent 15%; border-left: thick $accent; }
+    #session-empty { display: none; color: $text-muted; padding: 1; height: auto; }
+    #session-empty.visible { display: block; }
+    #session-footer { color: $text-muted; height: auto; margin-top: 1; }
+    #session-hint { color: $text-muted; height: 1; }
+    """
+
+    def __init__(self, sessions: Sequence[Any], *, tokens: Tokens, current_id: str = "") -> None:
+        super().__init__()
+        self.tokens = tokens
+        self.sessions = list(sessions)
+        self.current_id = current_id
+        self._visible: list[Any] = list(sessions)
+        # Map for quick lookup
+        self._by_id = {getattr(s, "id", str(s)): s for s in self.sessions}
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="session-chooser"):
+            yield Static("Sessions", id="session-title")
+            caption = ""
+            if self.sessions:
+                caption = f"{len(self.sessions)} recent sessions — current highlighted · type to filter"
+                if self.current_id:
+                    caption += f" · current: {self.current_id[:8]}"
+            else:
+                caption = "No sessions yet — your conversations will appear here"
+            yield Static(caption, id="session-caption")
+            # Show current session summary if present
+            current = self._by_id.get(self.current_id) if self.current_id else None
+            if current is not None:
+                info = Text()
+                info.append("current: ", style=self.tokens.faint)
+                info.append(getattr(current, "name", "")[:50] or getattr(current, "title", "")[:50], style=f"bold {self.tokens.text}")
+                info.append(f"  ·  {getattr(current, 'short_id', current.id[:8])}", style=self.tokens.muted)
+                info.append(f"  ·  {getattr(current, 'provider', '')}/{getattr(current, 'model', '')}", style=self.tokens.dim)
+                yield Static(info, id="session-meta")
+            yield Input(placeholder="Filter by name, id, date, provider…", id="session-input")
+            yield ListView(id="session-list")
+            yield Static("", id="session-empty")
+            yield Static(self._footer_text(), id="session-footer")
+            yield Static("", id="session-hint")
+
+    def _footer_text(self) -> str:
+        return "↑↓ move    enter resume    d delete    n new session    esc close"
+
+    def on_mount(self) -> None:
+        self._populate(self.sessions)
+        self.query_one("#session-input", Input).focus()
+        self._update_hint()
+
+    def _populate(self, sessions: Sequence[Any]) -> None:
+        self._visible = list(sessions)
+        listing = self.query_one("#session-list", ListView)
+        listing.clear()
+        for rec in self._visible:
+            is_current = getattr(rec, "id", "") == self.current_id
+            listing.append(ListItem(Label(self._render_session(rec, is_current=is_current))))
+        empty = self.query_one("#session-empty", Static)
+        if self._visible:
+            empty.remove_class("visible")
+            listing.display = True
+            # Focus current if present
+            idx = next((i for i, s in enumerate(self._visible) if getattr(s, "id", "") == self.current_id), 0)
+            listing.index = idx
+        else:
+            listing.display = False
+            empty.add_class("visible")
+            empty.update("No sessions match that filter.")
+
+    def _render_session(self, rec: Any, *, is_current: bool = False) -> Text:
+        t = self.tokens
+        text = Text()
+        # Marker
+        if is_current:
+            text.append(f"{GLYPH['ready']} ", style=t.accent)
+        else:
+            # status dot
+            status = getattr(rec, "status", "completed")
+            if status == "active":
+                text.append("● ", style=t.ok)
+            elif status == "interrupted":
+                text.append("◐ ", style=t.warn)
+            else:
+                text.append("○ ", style=t.faint)
+
+        # Name — bold if current
+        name = getattr(rec, "name", "") or getattr(rec, "title", "") or f"Session {getattr(rec, 'id', '')[:8]}"
+        name = truncate(name, 32)
+        style = f"bold {t.text}" if is_current else t.text
+        text.append(f"{name:<32}", style=style)
+
+        # Short ID
+        sid = getattr(rec, "short_id", getattr(rec, "id", "")[:8])
+        text.append(f"{sid:<9}", style=t.accent_dim if is_current else t.faint)
+
+        # Date + time
+        date = getattr(rec, "date_str", "") or time.strftime("%Y-%m-%d", time.localtime(getattr(rec, "created_at", 0)))
+        tm = getattr(rec, "time_str", "") or time.strftime("%H:%M", time.localtime(getattr(rec, "created_at", 0)))
+        try:
+            import time as _time
+            date = getattr(rec, "date_str", _time.strftime("%Y-%m-%d", _time.localtime(getattr(rec, "created_at", 0))))
+            tm = getattr(rec, "time_str", _time.strftime("%H:%M:%S", _time.localtime(getattr(rec, "created_at", 0))))
+        except Exception:
+            pass
+        text.append(f"{date} ", style=t.muted)
+        text.append(f"{tm:<8}", style=t.muted)
+
+        # Provider/model
+        provider = getattr(rec, "provider", "") or "—"
+        model = getattr(rec, "model", "") or "—"
+        pm = f"{truncate(provider, 10)}/{truncate(model, 12)}" if provider != "—" else truncate(model, 18)
+        text.append(f"{truncate(pm, 20):<20}", style=t.dim)
+
+        # Turns + messages
+        turns = getattr(rec, "turns", 0)
+        msgs = getattr(rec, "message_count", 0)
+        if turns or msgs:
+            text.append(f" {turns}τ {msgs}✉", style=t.faint)
+        if is_current:
+            text.append("  CURRENT", style=f"bold {t.accent}")
+        return text
+
+    def _update_hint(self) -> None:
+        try:
+            hint = self.query_one("#session-hint", Static)
+            idx = self.query_one("#session-list", ListView).index or 0
+            if 0 <= idx < len(self._visible):
+                rec = self._visible[idx]
+                detail = Text()
+                detail.append("resume: ", style=self.tokens.faint)
+                detail.append(f"ua tui --resume {getattr(rec, 'id', '')[:8]}", style=self.tokens.accent)
+                detail.append("  ·  ", style=self.tokens.faint)
+                cwd = getattr(rec, "cwd", "")
+                if cwd:
+                    # Show only last two path components for polish
+                    parts = cwd.rsplit("/", 2)
+                    short_cwd = "/".join(parts[-2:]) if len(parts) >= 2 else cwd
+                    detail.append(truncate(short_cwd, 36), style=self.tokens.muted)
+                    detail.append("  ", style=self.tokens.faint)
+                last = getattr(rec, "last_task", "") or getattr(rec, "summary", "")
+                if last:
+                    detail.append(truncate(last, 44), style=self.tokens.muted)
+                hint.update(detail)
+            else:
+                hint.update(Text(""))
+        except Exception:
+            pass
+
+    def _filter(self, query: str) -> None:
+        query = query.strip().lower()
+        if not query:
+            self._populate(self.sessions)
+            self._update_hint()
+            return
+        from unknown_agent.tui.commands import fuzzy_score as _fuzzy
+        scored = []
+        for rec in self.sessions:
+            hay = " ".join(
+                [
+                    getattr(rec, "name", ""),
+                    getattr(rec, "title", ""),
+                    getattr(rec, "id", ""),
+                    getattr(rec, "short_id", ""),
+                    getattr(rec, "provider", ""),
+                    getattr(rec, "model", ""),
+                    getattr(rec, "last_task", ""),
+                    getattr(rec, "date_str", ""),
+                    getattr(rec, "cwd", ""),
+                ]
+            ).lower()
+            # Prefer direct substring for dates/ids, fuzzy for names
+            if query in hay:
+                score = 1000 - hay.index(query)
+            else:
+                score = _fuzzy(query, hay)
+            if score > 0:
+                scored.append((score, rec))
+        scored.sort(key=lambda p: -p[0])
+        self._populate([r for _, r in scored])
+        self._update_hint()
+
+    @on(Input.Changed, "#session-input")
+    def _on_filter(self, event: Input.Changed) -> None:
+        self._filter(event.value)
+
+    @on(ListView.Selected, "#session-list")
+    def _on_click(self, event: ListView.Selected) -> None:
+        self._accept_index(event.list_view.index or 0)
+
+    def action_move_down(self) -> None:
+        self._move(1)
+
+    def action_move_up(self) -> None:
+        self._move(-1)
+
+    def _move(self, delta: int) -> None:
+        listing = self.query_one("#session-list", ListView)
+        if not self._visible:
+            return
+        listing.index = ((listing.index or 0) + delta) % len(self._visible)
+        self._update_hint()
+
+    def action_accept(self) -> None:
+        self._accept_index(self.query_one("#session-list", ListView).index or 0)
+
+    def _accept_index(self, index: int) -> None:
+        if 0 <= index < len(self._visible):
+            rec = self._visible[index]
+            self.dismiss(getattr(rec, "id", ""))
+
+    def action_cancel(self) -> None:
+        self.dismiss(None)
+
+    def action_delete(self) -> None:
+        # Deletion is handled by the shell — we just signal intent via a special value
+        # that the shell interprets.  For now, ignore inside the modal and let shell handle.
+        listing = self.query_one("#session-list", ListView)
+        idx = listing.index or 0
+        if 0 <= idx < len(self._visible):
+            rec = self._visible[idx]
+            # Store for shell to handle — dismiss with a prefix
+            self.dismiss(f"__delete__{getattr(rec, 'id', '')}")
+
+    def action_new_session(self) -> None:
+        self.dismiss("__new__")
+
+
+class SessionDetailScreen(ModalScreen[None]):
+    """Read-only metadata view for a single session."""
+
+    DEFAULT_CSS = _MODAL_CSS + """
+    SessionDetailScreen { align: center middle; background: $background 60%; }
+    SessionDetailScreen > #detail { width: 76; max-width: 92%; height: auto; max-height: 84%; background: $surface; border: round $primary 45%; padding: 1 2; }
+    #detail-title { color: $text; text-style: bold; height: 1; }
+    #detail-body { color: $text-muted; height: auto; margin: 1 0; }
+    #detail-footer { color: $text-muted; height: 1; }
+    """
+
+    def __init__(self, record: Any, *, tokens: Tokens) -> None:
+        super().__init__()
+        self.record = record
+        self.tokens = tokens
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="detail"):
+            yield Static(f"Session {getattr(self.record, 'short_id', getattr(self.record, 'id', '')[:8])}", id="detail-title")
+            yield Static(self._body(), id="detail-body")
+            yield Static("esc close", id="detail-footer")
+
+    def _body(self) -> Text:
+        r = self.record
+        t = self.tokens
+        body = Text()
+        def row(label: str, value: str) -> None:
+            body.append(f"{label:<14}", style=t.muted)
+            body.append(value + "\n", style=t.text)
+        row("name", getattr(r, "name", "") or getattr(r, "title", ""))
+        row("id", getattr(r, "id", ""))
+        row("date", getattr(r, "datetime_str", "") or time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(getattr(r, "created_at", 0))))
+        row("updated", getattr(r, "updated_str", "") or time.strftime("%Y-%m-%d %H:%M", time.localtime(getattr(r, "updated_at", 0))))
+        row("status", getattr(r, "status", ""))
+        row("cwd", getattr(r, "cwd", "") or "—")
+        row("provider", f"{getattr(r, 'provider', '') or '—'} / {getattr(r, 'model', '') or '—'}")
+        row("turns", str(getattr(r, "turns", 0)))
+        row("messages", str(getattr(r, "message_count", 0)))
+        dur = getattr(r, "duration_s", 0)
+        try:
+            mins, secs = divmod(int(dur), 60)
+            row("duration", f"{mins}m {secs}s" if mins else f"{secs}s")
+        except Exception:
+            row("duration", str(dur))
+        row("resumes", str(getattr(r, "resume_count", 0)))
+        if getattr(r, "last_task", ""):
+            body.append("\nlast task:\n", style=f"bold {t.muted}")
+            body.append(truncate(getattr(r, "last_task", ""), 400) + "\n", style=t.dim)
+        body.append("\nresume:\n", style=f"bold {t.muted}")
+        body.append(f"  ua tui --resume {getattr(r, 'id', '')[:8]}\n", style=t.accent)
+        body.append(f"  ua sessions resume {getattr(r, 'id', '')[:8]}\n", style=t.accent_dim)
+        return body
+
+    BINDINGS = [Binding("escape", "close", "close", show=False), Binding("q", "close", "close", show=False)]
 
     def action_close(self) -> None:
         self.dismiss(None)

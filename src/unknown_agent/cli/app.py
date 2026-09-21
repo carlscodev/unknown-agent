@@ -96,6 +96,7 @@ app = typer.Typer(
 def main_callback(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-V", help="Print the version and exit.", is_eager=True),
+    resume: str | None = typer.Option(None, "--resume", help="Resume a TUI session by id (shorthand for 'ua tui --resume <id>').", show_default=False),
     config: Path | None = typer.Option(None, "--config", help="Use this config file instead of the user config.", show_default=False),
     cwd: Path | None = typer.Option(None, "--cwd", help="Run as if started in this directory.", show_default=False),
     project: Path | None = typer.Option(None, "--project", help="Project root (defaults to the nearest .unknown/ or .git/).", show_default=False),
@@ -157,6 +158,32 @@ def main_callback(
         animations=(False if no_animations else None),
     )
     ctx.obj = runtime
+
+    # ``ua --resume <id>`` is a convenience alias for ``ua tui --resume <id>``.
+    # It is handled here before the banner so ``ua --resume latest`` just works,
+    # and ``ua --resume`` is discoverable as a top-level option.
+    if resume is not None:
+        # If a subcommand was also given, prefer that subcommand's handling;
+        # otherwise, synthesize a ``tui --resume <id>`` invocation.
+        if ctx.invoked_subcommand is None:
+            # Re-use the same store/session logic as ``tui --resume`` by directly
+            # invoking the tui command with a synthetic context.
+            from unknown_agent.cli.commands.misc import tui_command
+            import typer as _typer
+            # Build a fake context that carries our runtime and the resume arg
+            fake_ctx = _typer.Context(tui_command, obj=runtime)
+            # ``resume`` may be a string value or empty string when ``--resume`` is bare.
+            # Bare ``--resume`` (no value) yields True-ish via typer? In that case,
+            # treat as "latest".
+            _resume_val = resume if isinstance(resume, str) and resume.strip() else "latest"
+            # Strip surrounding = if user passed ``--resume=abc``
+            if isinstance(_resume_val, str) and _resume_val.startswith("="):
+                _resume_val = _resume_val[1:]
+            fake_ctx.args = ["--resume", _resume_val] if _resume_val else ["--resume", "latest"]
+            tui_command(fake_ctx)
+            raise _typer.Exit(0)
+        # If a subcommand *was* given alongside ``--resume``, let the subcommand win
+        # but note the ambiguity.
 
     if ctx.invoked_subcommand is None:
         output.print(banner(compact=True, subtitle="run `ua --help` to see what I can do"))
@@ -331,6 +358,7 @@ _VALUE_FLAGS = frozenset(
         "--dod",
         "--definition-of-done",
         "--color",
+        "--resume",
     }
 )
 

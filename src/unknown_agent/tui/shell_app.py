@@ -39,6 +39,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import time
+from pathlib import Path
 from collections.abc import Awaitable, Callable
 from typing import Any
 
@@ -52,6 +53,7 @@ from textual.widgets import Input, RichLog, Static
 from unknown_agent.observability.logging import get_logger
 from unknown_agent.providers.health import ProviderStatus
 from unknown_agent.tui.commands import Command, CommandRegistry, SlashSuggestions, build_default_commands
+from unknown_agent.tui.history import TuiSessionRecord, TuiSessionStore
 from unknown_agent.tui.dashboard import ContextCard, ProviderCard, SessionCard, UsageCard, status_marker
 from unknown_agent.tui.design import DARK, GLYPH, LIGHT, Tokens, format_duration, tokens_for, truncate
 from unknown_agent.tui.provider_status import (
@@ -294,6 +296,8 @@ class TUIAppShell(App[None]):
     BINDINGS = [
         Binding("ctrl+p", "command_palette", "commands", priority=True),
         Binding("f1", "show_help", "help"),
+        Binding("f7", "show_sessions", "sessions"),
+        Binding("ctrl+o", "show_sessions", "sessions", show=False),
         Binding("f2", "switch_model", "model"),
         Binding("f3", "switch_provider", "provider"),
         Binding("f4", "switch_mode", "mode"),
@@ -316,11 +320,14 @@ class TUIAppShell(App[None]):
         controller: ProviderStatusController | None = None,
         usage: UsageTracker | None = None,
         resolve_on_mount: bool = True,
+        resume_id: str | None = None,
+        tui_store: TuiSessionStore | None = None,
     ) -> None:
         super().__init__()
         self.settings = settings
         self._runner = runner
         self.first_task = first_task
+        self._resume_id = resume_id
 
         self.tokens: Tokens = tokens_for(theme_key or self._configured_theme(settings))
 
@@ -354,6 +361,18 @@ class TUIAppShell(App[None]):
         self._breakpoint: str = "wide"  # wide | compact | narrow | phone
         self._sidebar_visible: bool = True  # honored on narrow/phone
         self._sidebar_auto_hidden: bool = False
+
+        # — tui session history -------------------------------------------------
+        # Each launch is a session with an ID, name, timestamps and a transcript
+        # that survives restarts.  The store lives in the platform state_dir so
+        # `ua tui --resume <id>` and the picker can find it later.
+        self._tui_store: TuiSessionStore | None = tui_store
+        self._tui_session: TuiSessionRecord | None = None
+        self._tui_owns_store: bool = tui_store is None  # close on exit if we created it
+        try:
+            self._ensure_tui_session()
+        except Exception:  # noqa: BLE001 - history must never block launch
+            log.debug("tui session init failed", exc_info=True)
 
         # Auto-attach a chat runner if config already contains a valid provider/model.
         # This is the fix for “no agent attached” when the TUI was launched without
@@ -404,9 +423,56 @@ class TUIAppShell(App[None]):
                 self._ensure_runner()
         except Exception:  # noqa: BLE001
             log.debug("auto-attach at mount failed", exc_info=True)
+        # Ensure session history is ready — this may have been deferred if settings were None at init
+        try:
+            if self._tui_session is None:
+                self._ensure_tui_session()
+        except Exception:  # noqa: BLE001
+            log.debug("ensure tui session at mount failed", exc_info=True)
         self._render_chrome()
         self._refresh_sidebar()
-        self._greet()
+        # If resuming, replay previous transcript instead of greeting anew
+        did_resume = False
+        try:
+            if self._tui_session is not None and getattr(self._tui_session, "resume_count", 0) > 0:
+                # Check if transcript exists
+                if self._tui_store is not None:
+                    t = self._tui_store.load_transcript(self._tui_session.id, limit=500)
+                    if t:
+                        did_resume = True
+        except Exception:
+            did_resume = False
+        if did_resume:
+            self._load_tui_transcript_into_ui()
+            # Show a resume banner with session metadata
+            try:
+                rec = self._tui_session
+                banner = Text()
+                banner.append(f"resumed session ", style=self.tokens.muted)
+                banner.append(rec.display_name, style=f"bold {self.tokens.text}")
+                banner.append(f"  ·  {rec.short_id}", style=self.tokens.accent)
+                banner.append(f"  ·  {rec.turns} turns", style=self.tokens.dim)
+                banner.append(f"  ·  {rec.datetime_str}", style=self.tokens.faint)
+                banner.append("\n", style=self.tokens.muted)
+                banner.append(f"resume again with: {self._tui_resume_command(rec.id)}", style=self.tokens.faint)
+                self.write(banner)
+                self.write(Text(""))
+            except Exception:
+                self._greet()
+        else:
+            self._greet()
+            # For a fresh session, show its identity subtly so the user learns the resume command early
+            try:
+                if self._tui_session is not None:
+                    rec = self._tui_session
+                    hint = Text()
+                    hint.append(f"session {rec.display_name}  ·  {rec.short_id}  ·  ", style=self.tokens.faint)
+                    hint.append(self._tui_resume_command(rec.id), style=self.tokens.muted)
+                    # Don't record this hint as a chat message — it's UI chrome
+                    self.write(hint, persist=False)
+                    self.write(Text(""), persist=False)
+            except Exception:
+                pass
 
         composer = self.query_one("#composer", Input)
         if self.first_task:
@@ -419,6 +485,28 @@ class TUIAppShell(App[None]):
         try:
             self._update_responsive()
         except Exception:  # noqa: BLE001
+            pass
+
+    def on_unmount(self) -> None:
+        """Ensure the session is marked finished and the store is closed.
+
+        This is the reliable exit hook — it runs for normal exit, ctrl+q,
+        and for an unhandled exception that tears the app down.  Combined
+        with the outer ``tui_command`` finally block that prints the resume
+        command, it guarantees the user always sees how to get back.
+        """
+        try:
+            self._finish_tui_session(status="completed")
+        except Exception:
+            pass
+        try:
+            if getattr(self, "_tui_owns_store", False) and self._tui_store is not None:
+                try:
+                    self._tui_store.close()
+                except Exception:
+                    pass
+                self._tui_store = None
+        except Exception:
             pass
 
     # ------------------------------------------------------------------ #
@@ -740,7 +828,7 @@ class TUIAppShell(App[None]):
     def conversation(self) -> RichLog:
         return self.query_one("#conversation", RichLog)
 
-    def write(self, renderable: Any, *, record: bool = True) -> None:
+    def write(self, renderable: Any, *, record: bool = True, persist: bool = True) -> None:
         """Write to the transcript.
 
         ``renderable`` may be a Rich renderable or a callable taking the current
@@ -964,13 +1052,38 @@ class TUIAppShell(App[None]):
                     usage_card.remove_class("hidden")
             except Exception:
                 pass
-            self._session_info.update(
-                {
-                    "mode": self.reasoning_mode_name(),
-                    "elapsed": format_duration(time.time() - self.started_at),
-                    "turns": str(self.turns) if self.turns else "",
-                }
-            )
+            # Enrich with tui session history metadata for the SessionCard
+            try:
+                rec = getattr(self, "_tui_session", None)
+                if rec is not None:
+                    self._session_info.update(
+                        {
+                            "mode": self.reasoning_mode_name(),
+                            "elapsed": format_duration(time.time() - self.started_at),
+                            "turns": str(self.turns) if self.turns else "",
+                            "session_id": getattr(rec, "short_id", ""),
+                            "session_name": getattr(rec, "display_name", ""),
+                            "session_turns": str(getattr(rec, "turns", "")),
+                            "session_date": getattr(rec, "date_str", ""),
+                            "session_time": getattr(rec, "time_str", ""),
+                        }
+                    )
+                else:
+                    self._session_info.update(
+                        {
+                            "mode": self.reasoning_mode_name(),
+                            "elapsed": format_duration(time.time() - self.started_at),
+                            "turns": str(self.turns) if self.turns else "",
+                        }
+                    )
+            except Exception:
+                self._session_info.update(
+                    {
+                        "mode": self.reasoning_mode_name(),
+                        "elapsed": format_duration(time.time() - self.started_at),
+                        "turns": str(self.turns) if self.turns else "",
+                    }
+                )
             self.query_one("#card-session", SessionCard).info = dict(self._session_info)
         self._render_chrome()
         self._render_context_bar()
@@ -1126,6 +1239,11 @@ class TUIAppShell(App[None]):
 
         self._history.append(text)
         self._history_index = len(self._history)
+        # Persist user turn immediately so resume restores it even if the run never completes
+        try:
+            self._persist_tui_message("user", text)
+        except Exception:
+            pass
         self.run_task(text)
 
     def invoke(self, command: Command) -> None:
@@ -1370,6 +1488,23 @@ class TUIAppShell(App[None]):
     def action_clear(self) -> None:
         self.conversation.clear()
         self._transcript.clear()
+        # Also clear the persisted transcript for this session (but keep session record)
+        try:
+            if self._tui_store is not None and self._tui_session is not None:
+                # Truncate transcript file
+                p = self._tui_store._transcript_path_for(self._tui_session.id)
+                try:
+                    p.write_text("", encoding="utf-8")
+                except Exception:
+                    pass
+                # Reset counters but keep session identity
+                self._tui_session.message_count = 0
+                self._tui_session.turns = 0
+                self._tui_session.last_task = ""
+                self._tui_store.upsert(self._tui_session)
+                self.turns = 0
+        except Exception:
+            pass
         self._greet()
 
     @safe_action("cancel")
@@ -1394,6 +1529,11 @@ class TUIAppShell(App[None]):
             )
             if not confirmed:
                 return
+        # Finish the tui session so exit message has correct status
+        try:
+            self._finish_tui_session(status="completed")
+        except Exception:
+            pass
         self.exit()
 
     # ------------------------------------------------------------------ #
@@ -1486,8 +1626,17 @@ class TUIAppShell(App[None]):
             with ErrorBoundary(self, region="agent run"):
                 result = await self._runner(task, self._hooks())
                 self._record_usage(result)
-                self.write(self._format_result(result))
+                formatted = self._format_result(result)
+                self.write(formatted)
                 self.write(Text(""))
+                # Persist assistant turn
+                try:
+                    # Extract plain text from result for history
+                    assistant_text = str(getattr(result, "output", None) or getattr(result, "content", None) or getattr(result, "summary", None) or result or "")
+                    if assistant_text.strip():
+                        self._persist_tui_message("assistant", assistant_text.strip()[:8000])
+                except Exception:
+                    pass
         except asyncio.CancelledError:
             self.note("cancelled", tone="warn")
             raise
@@ -1799,6 +1948,309 @@ class TUIAppShell(App[None]):
             self.note(f"still detached: {reason} — {details.get('hint','press /setup')}", tone="warn")
 
     # ------------------------------------------------------------------ #
+    # tui session history — persistence, resume, polish
+    # ------------------------------------------------------------------ #
+    def _tui_store_paths(self) -> tuple[Path, Path]:
+        """Resolve the history DB and transcripts dir from settings or platform defaults."""
+        try:
+            from unknown_agent.config.paths import resolve_paths
+            # Prefer runtime paths if available, else resolve from cwd
+            if self.settings is not None and hasattr(self.settings, "_paths"):
+                paths = getattr(self.settings, "_paths")
+                if paths is not None:
+                    return paths.sessions_db.parent / "tui_sessions.db", paths.sessions_db.parent / "tui_transcripts"
+            # Fallback to platformdirs via resolve_paths
+            from pathlib import Path as _P
+            paths = resolve_paths(_P.cwd())
+            return paths.state_dir / "tui_sessions.db", paths.state_dir / "tui_transcripts"
+        except Exception:
+            # Ultimate fallback: cwd-based
+            base = Path.cwd() / ".unknown"
+            return base / "tui_sessions.db", base / "tui_transcripts"
+
+    def _ensure_tui_session(self) -> TuiSessionRecord | None:
+        """Create or resume the backing session for this launch.
+
+        Called at init and again at mount (in case settings arrived late).
+        Never raises — history is an enhancement, not a gate.
+        """
+        if self._tui_session is not None:
+            return self._tui_session
+        # Lazily create store if the shell was constructed without one (normal path)
+        if self._tui_store is None:
+            try:
+                db_path, transcripts_dir = self._tui_store_paths()
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                transcripts_dir.mkdir(parents=True, exist_ok=True)
+                self._tui_store = TuiSessionStore(db_path, transcripts_dir)
+                self._tui_owns_store = True
+            except Exception as exc:  # noqa: BLE001
+                log.debug("could not create tui store: %s", exc)
+                return None
+        store = self._tui_store
+        if store is None:
+            return None
+        # Try to resume if requested
+        resume_id = getattr(self, "_resume_id", None)
+        if resume_id:
+            # Accept "latest", "last", or an id substring
+            if resume_id in {"latest", "last", "--last"}:
+                latest = store.latest()
+                if latest is not None:
+                    resumed = store.resume(latest.id)
+                    if resumed is not None:
+                        self._tui_session = resumed
+                        self._tui_session_id = resumed.id
+                        store.set_current_marker(resumed.id)
+                        # prime session_info for chrome
+                        self._session_info.update({"session_id": resumed.short_id, "session_name": resumed.display_name})
+                        return resumed
+            else:
+                rec = store.get(resume_id)
+                if rec is not None:
+                    resumed = store.resume(rec.id)
+                    if resumed is not None:
+                        self._tui_session = resumed
+                        self._tui_session_id = resumed.id
+                        store.set_current_marker(resumed.id)
+                        self._session_info.update({"session_id": resumed.short_id, "session_name": resumed.display_name})
+                        return resumed
+                # No match — fall through to create new but note it
+                log.debug("resume id %r not found, creating new session", resume_id)
+        # Create new
+        try:
+            cwd = str(Path.cwd())
+            try:
+                if self.settings is not None:
+                    from unknown_agent.config.paths import resolve_paths
+                    cwd = str(resolve_paths(Path.cwd()).cwd)
+            except Exception:
+                pass
+            provider = ""
+            model = ""
+            try:
+                state = getattr(self.provider_status, "state", None)
+                if state is not None:
+                    provider = getattr(state, "provider_label", "") or getattr(state, "provider", "") or ""
+                    model = getattr(state, "model", "") or ""
+            except Exception:
+                pass
+            # Also try profile
+            if not provider or not model:
+                try:
+                    prof = self._profile()
+                    if prof is not None:
+                        provider = provider or getattr(prof, "type", "") or getattr(prof, "name", "") or ""
+                        model = model or getattr(prof, "model", "") or ""
+                except Exception:
+                    pass
+            rec = store.create(cwd=cwd, provider=provider, model=model, first_task=self.first_task or None)
+            self._tui_session = rec
+            self._tui_session_id = rec.id
+            store.set_current_marker(rec.id)
+            self._session_info.update({"session_id": rec.short_id, "session_name": rec.display_name})
+            return rec
+        except Exception as exc:  # noqa: BLE001
+            log.debug("could not create tui session: %s", exc)
+            return None
+
+    def _load_tui_transcript_into_ui(self) -> None:
+        """When resuming, replay the stored transcript into the conversation log."""
+        if self._tui_session is None or self._tui_store is None:
+            return
+        try:
+            transcript = self._tui_store.load_transcript(self._tui_session.id, limit=500)
+            if not transcript:
+                return
+            # Replay: each entry is {role, content, timestamp}
+            for msg in transcript:
+                role = msg.get("role", "user")
+                content = str(msg.get("content", "") or "")
+                if not content:
+                    continue
+                if role == "user":
+                    prompt = Text()
+                    prompt.append(f"{GLYPH['prompt']} ", style=self.tokens.accent)
+                    prompt.append(content, style=self.tokens.text)
+                    # Do not re-persist while replaying
+                    self._transcript.append(prompt)
+                    try:
+                        self.conversation.write(prompt)
+                    except Exception:
+                        pass
+                else:
+                    body = Text()
+                    body.append(f"{GLYPH['bullet']} ", style=self.tokens.ok)
+                    body.append(content, style=self.tokens.text)
+                    self._transcript.append(body)
+                    try:
+                        self.conversation.write(body)
+                    except Exception:
+                        pass
+            # Update turns from record
+            self.turns = int(getattr(self._tui_session, "turns", 0) or 0)
+        except Exception:  # noqa: BLE001
+            log.debug("could not replay transcript", exc_info=True)
+
+    def _persist_tui_message(self, role: str, content: str) -> None:
+        """Append a single message to the history store and refresh chrome."""
+        if self._tui_session is None or self._tui_store is None:
+            return
+        try:
+            provider = ""
+            model = ""
+            try:
+                state = getattr(self.provider_status, "state", None)
+                if state is not None:
+                    provider = getattr(state, "provider_label", "") or getattr(state, "provider", "") or ""
+                    model = getattr(state, "model", "") or ""
+            except Exception:
+                pass
+            self._tui_store.update_on_message(self._tui_session.id, role, content, provider=provider, model=model)
+            # Keep local copy in sync
+            updated = self._tui_store.get(self._tui_session.id)
+            if updated is not None:
+                self._tui_session = updated
+                self._session_info.update({"session_id": updated.short_id, "session_name": updated.display_name})
+                # Also update sidebar session card info lazily — callers will refresh
+        except Exception:  # noqa: BLE001
+            log.debug("could not persist tui message", exc_info=True)
+
+    def _finish_tui_session(self, status: str = "completed") -> TuiSessionRecord | None:
+        """Mark the current session as finished.  Never raises."""
+        if self._tui_session is None or self._tui_store is None:
+            return None
+        try:
+            rec = self._tui_store.finish(self._tui_session.id, status=status)
+            if rec is not None:
+                self._tui_session = rec
+            return rec
+        except Exception:  # noqa: BLE001
+            log.debug("could not finish tui session", exc_info=True)
+            return None
+
+    def _tui_resume_command(self, session_id: str | None = None) -> str:
+        sid = (session_id or getattr(self._tui_session, "id", "") or "").strip()
+        short = sid[:8] if sid else (getattr(self._tui_session, "short_id", "") if self._tui_session else "")
+        target = short or sid or "latest"
+        return f"ua tui --resume {target}"
+
+    def _tui_resume_alternatives(self, session_id: str | None = None) -> list[str]:
+        sid = (session_id or getattr(self._tui_session, "id", "") or "").strip()
+        short = sid[:8] if sid else ""
+        target = short or sid or "latest"
+        return [f"ua tui --resume {target}", f"ua sessions resume {target}"]
+
+    @work(exclusive=True, group="modal")
+    @safe_action("sessions")
+    async def action_show_sessions(self) -> None:
+        """Show the polished session picker — resume a previous session or start new."""
+        store = self._tui_store
+        if store is None:
+            try:
+                self._ensure_tui_session()
+                store = self._tui_store
+            except Exception:
+                store = None
+        if store is None:
+            self.note("session history unavailable — could not open the store", tone="warn")
+            return
+        try:
+            sessions = store.list(limit=30)
+        except Exception as exc:  # noqa: BLE001
+            self.note(f"could not list sessions: {exc}", tone="warn")
+            return
+        current_id = getattr(self._tui_session, "id", "") or ""
+        # Also prime session_info so footer shows current
+        self._session_info.update({"session_id": getattr(self._tui_session, "short_id", "") if self._tui_session else "", "session_name": getattr(self._tui_session, "display_name", "") if self._tui_session else ""})
+        try:
+            from unknown_agent.tui.screens import SessionHistoryScreen
+            chosen = await self.push_screen_wait(SessionHistoryScreen(sessions, tokens=self.tokens, current_id=current_id))
+        except Exception as exc:  # noqa: BLE001
+            self.note(f"sessions picker failed: {exc}", tone="warn")
+            return
+        if chosen is None:
+            return
+        if chosen == "__new__":
+            # Start a fresh session — finish current, create new, clear transcript
+            try:
+                self._finish_tui_session(status="completed")
+                # Create new
+                cwd = str(Path.cwd())
+                provider = getattr(self.provider_status.state, "provider_label", "") or getattr(self.provider_status.state, "provider", "")
+                model = getattr(self.provider_status.state, "model", "")
+                new_rec = store.create(cwd=cwd, provider=provider or "", model=model or "", first_task=None)
+                self._tui_session = new_rec
+                self._tui_session_id = new_rec.id
+                store.set_current_marker(new_rec.id)
+                self._session_info.update({"session_id": new_rec.short_id, "session_name": new_rec.display_name})
+                self.conversation.clear()
+                self._transcript.clear()
+                self.turns = 0
+                self._greet()
+                self._refresh_sidebar()
+                self.note(f"new session {new_rec.display_name} · {new_rec.short_id} — resume with `{self._tui_resume_command(new_rec.id)}`", tone="ok")
+            except Exception as exc:  # noqa: BLE001
+                self.note(f"could not start new session: {exc}", tone="warn")
+            return
+        if chosen.startswith("__delete__"):
+            target_id = chosen[len("__delete__"):]
+            try:
+                # Confirm deletion
+                from unknown_agent.tui.screens import ConfirmScreen
+                ok = await self.push_screen_wait(ConfirmScreen("Delete this session?", f"Remove {target_id[:8]} from history? The transcript file will be deleted."))
+                if not ok:
+                    return
+                was_current = target_id == getattr(self._tui_session, "id", "")
+                store.delete(target_id)
+                self.note(f"deleted session {target_id[:8]}", tone="ok")
+                if was_current:
+                    # Create a new session to replace it
+                    cwd = str(Path.cwd())
+                    provider = getattr(self.provider_status.state, "provider_label", "") or ""
+                    model = getattr(self.provider_status.state, "model", "")
+                    new_rec = store.create(cwd=cwd, provider=provider or "", model=model or "")
+                    self._tui_session = new_rec
+                    self._tui_session_id = new_rec.id
+                    self.conversation.clear()
+                    self._transcript.clear()
+                    self.turns = 0
+                    self._greet()
+                    self._refresh_sidebar()
+            except Exception as exc:  # noqa: BLE001
+                self.note(f"delete failed: {exc}", tone="warn")
+            return
+        # Normal resume
+        try:
+            target = store.get(chosen)
+            if target is None:
+                self.note(f"session {chosen[:8]} not found", tone="warn")
+                return
+            # If already current, just note
+            if target.id == getattr(self._tui_session, "id", ""):
+                self.note(f"already on session {target.display_name} · {target.short_id}", tone="muted")
+                return
+            # Finish current, switch
+            self._finish_tui_session(status="completed")
+            resumed = store.resume(target.id)
+            if resumed is None:
+                self.note(f"could not resume {target.short_id}", tone="warn")
+                return
+            self._tui_session = resumed
+            self._tui_session_id = resumed.id
+            store.set_current_marker(resumed.id)
+            self._session_info.update({"session_id": resumed.short_id, "session_name": resumed.display_name})
+            # Replay transcript
+            self.conversation.clear()
+            self._transcript.clear()
+            self._load_tui_transcript_into_ui()
+            self.turns = int(getattr(resumed, "turns", 0) or 0)
+            self._refresh_sidebar()
+            self.note(f"resumed {resumed.display_name} · {resumed.short_id} — {resumed.turns} turns, {resumed.message_count} messages", tone="ok")
+        except Exception as exc:  # noqa: BLE001
+            self.note(f"resume failed: {exc}", tone="warn")
+
+    # ------------------------------------------------------------------ #
     # configuration
     # ------------------------------------------------------------------ #
     def reasoning_mode_name(self) -> str:
@@ -1955,6 +2407,8 @@ async def run_app_shell(
     first_task: str = "",
     headless: bool = False,
     resolve_on_mount: bool = True,
+    resume_id: str | None = None,
+    tui_store: Any | None = None,
 ) -> TUIAppShell:
     """Launch the shell. Never raises for provider reasons — that is the contract.
 
@@ -1966,7 +2420,7 @@ async def run_app_shell(
     without waiting for ``on_mount``.
     """
 
-    app = TUIAppShell(settings=settings, runner=runner, first_task=first_task, resolve_on_mount=resolve_on_mount)
+    app = TUIAppShell(settings=settings, runner=runner, first_task=first_task, resolve_on_mount=resolve_on_mount, resume_id=resume_id, tui_store=tui_store)
     if app._runner is None and settings is not None:
         try:
             app._ensure_runner()

@@ -52,6 +52,44 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `tui/palette.py` was replaced by `tui/commands.py` + `tui/screens.py`.
 - The `settings` test fixture moved to `tests/conftest.py`.
 
+## [1.1.5] - 2026-09-21
+
+### Added — Session history + resume (TUI + CLI) — full lifecycle
+- **Real persistence, not a placeholder.** Each TUI launch is now a *session* with a stable 16-hex ID (`short_id` 8), human name/title, `created_at`/`updated_at`/`finished_at`, `status` (`active`/`completed`/`interrupted`), `cwd`/`provider`/`model`, `turns`/`message_count`, `last_task`/`summary`, `resume_count`, `duration_s` and a JSONL transcript (`1 line = 1 message {role, content, timestamp, provider, model}`) — all in a dedicated SQLite index `state_dir/tui_sessions.db` + `tui_transcripts/<id>.jsonl` (`TuiSessionStore` in `tui/history.py`, `SCHEMA_VERSION 1`, `prune`/`stats`/`latest`/`get` with short-id substring, `current_tui_session` marker). Deleting the DB is safe; listing is instant; transcripts survive restarts.
+- **Polished recent-sessions list everywhere.** `TuiSessionRecord.to_dict()` exposes `name`, `ID/short_id`, `date`/`time`/`datetime` (from `time.localtime`) plus provider/model, turns/messages, cwd, resume_count, duration — exactly the advanced metadata the spec requires. Human tables via `ui/renderers.data_table` show `name | id | date | time | provider/model | activity (τ/✉) | status` with current highlighted `● current`/`CURRENT`; machine mode (`--json`) returns the full dict. No raw logs.
+- **Recent-sessions + resume-by-ID matching other CLIs.** `ua tui --resume <id>` (`--resume` bare ⇒ `latest`, `--resume=<id>` and substring short-id all work), `ua --resume <id>` top-level shorthand, `ua sessions resume <id>` (with `--launch/--no-launch`) and `ua sessions resume latest`, `ua tui --list` / `ua sessions list --tui` (with `--all`/`--search`/`--status`/`--json`) and `ua sessions tui`. Every path validates the id, prints recent hints on typo, and resolves short-ids deterministically (`ORDER BY updated_at DESC`).
+- **In-TUI command to view + resume.** New `tui/screens.SessionHistoryScreen` — a polished modal (96×88%, `fuzzy_score` filter, `ListView` with `is_current` marker `●`/`○`/`◐`, date/time, provider/model, turns/messages, hint `ua tui --resume <short>` + short cwd + last_task) and `SessionDetailScreen`. Replaces raw logs with cards; shows current clearly; supports `↑↓`/`enter` resume, `d` delete (with `ConfirmScreen`), `n` new session, `esc` close, live filter. Opened via three discoverable surfaces: slash `/sessions` `/history` `/resume` (also in `SlashSuggestions`), palette `Session history` / `History` / `Resume session`, hotkeys `f7` / `ctrl+o`. Help screen (`f1`) lists `f7`/`ctrl+o`. Footer no longer clips.
+- **Show current session clearly + polished metadata.** Sidebar `SessionCard` now renders `session`/`id`/`created`/`using`/`history` plus a subtle `resume ua tui --resume <short>` hint, refreshed from `store.get(id)` on every turn. Header never clips; TUI `on_mount` replays resumed transcript (`_load_tui_transcript_into_ui`) and shows a banner `resumed session <name> · <short> · <turns> turns · <datetime> — resume again with: ua tui --resume <short>`. New sessions show `session <name> · <short> · ua tui --resume <short>` as chrome hint. Every session row is `name | short_id | date | time | provider/model | activity | status` — not logs.
+- **Resume command on every exit, reliably.** `cli/commands/misc.tui_command` wraps `asyncio.run(run_app_shell(..., resume_id, tui_store))` with a `try/finally` that calls `_print_tui_resume` (human `output` + fallback `sys.stderr` plain) for **normal**, **Ctrl-C** (`KeyboardInterrupt → ExitCode.INTERRUPTED`), **alternate quit** (`ctrl+q` with confirm) and **crash** (`BaseException`) — all paths print `session "<name>" (<short>) saved. Resume with: ua tui --resume <short> | ua sessions resume <short>` with both forms. `TUIAppShell.on_unmount` finishes the session (`status completed`) and closes the store so even an unhandled exception marks it finished. `action_request_quit` also finishes before `exit()`. `run_task` and `_on_submit` persist `user`/`assistant` turns via `store.update_on_message(..., provider, model)` so resume restores up to 500 messages. Tested at 40×20/50×30/60×24/80×24/120×32/150×44.
+- **Architecture.** `TuiSessionStore` (`state_dir/tui_sessions.db` + `tui_transcripts/`), `TuiSessionRecord`, `tui/history.py` as single source; `shell_app._tui_store`/`_tui_session`/`_tui_owns_store` + helpers `_tui_store_paths`/`_ensure_tui_session`/`_load_tui_transcript_into_ui`/`_persist_tui_message`/`_finish_tui_session`/`_tui_resume_command` + `on_mount` replay + `on_unmount` close + `run_task` persist + `_refresh_sidebar` enrichment. `sessions.py` adds `list --tui`/`tui`/`resume` with current-per-scope logic (`latest(cwd)` vs global marker) and `kv_table` detail view. `app.py` adds global `--resume` shorthand (`--resume` in `_VALUE_FLAGS`, `main_callback` synthetic `tui --resume`). Storage, listing, current display, resume flow and exit command are all exercised headless.
+
+### Changed — CLI + TUI wiring
+- `cli/app.py` — global `--resume` (shorthand for `tui --resume`), added to `_VALUE_FLAGS` and handled before banner; `cli/commands/misc.tui_command` now parses `--resume`/`--resume-id`/`--resume=<id>`/`--list`/`--ls` from `ctx.args`, validates id upfront with recent hints, opens `TuiSessionStore`, handles `--list` polished table without launching TUI, and guarantees resume print via `_did_print` guard. `run_app_shell` now accepts `resume_id`/`tui_store` and forwards to `TUIAppShell`.
+- `tui/commands.build_default_commands` — adds `sessions` (`f7`/`/sessions`), `history` (`/history`) and `resume` (`/resume`) all wired to `action_show_sessions` (with `not_while_busy` where appropriate). `tui/commands.fuzzy_score` reused for session filter.
+- `tui/screens` — `__all__` gains `SessionHistoryScreen`/`SessionDetailScreen`; `HelpScreen` rows gain `f7`/`ctrl+o`.
+- `tui/shell_app` — `BINDINGS` gains `f7`/`ctrl+o` `show_sessions`; `__init__` gains `resume_id`/`tui_store` + `_tui_session` bootstrap; `on_mount` ensures session + replays; `on_unmount` finishes+closes; `write` signature gains `persist` (default true) but transcript replay uses `persist=False`; `_on_submit` persists user; `run_task` persists assistant + enriches `_session_info`; `_refresh_sidebar` injects `session_id`/`session_name`/`session_turns`/`session_date`/`session_time`; `action_clear` truncates transcript file; `action_show_sessions` implements picker→resume/new/delete with `ConfirmScreen`; `run_app_shell` signature updated; CSS unchanged but session bar already responsive. `dashboard.SessionCard` now renders session identity (`session`/`id`/`created`/`using`/`history` + resume hint).
+- `cli/commands/sessions` — `list` gains `--tui` flag (polished history with per-scope current), new `tui` alias command and `resume` command (with `kv_table` detail, `--launch/--no-launch` and direct `run_app_shell` launch). `__all__` unchanged.
+
+### Fixed
+- `sessions list --tui` without `--all` now shows the most recent session *for that cwd* as `● current` instead of only the global marker from a different project.
+- Headless `run_test` sessions no longer leak: `on_unmount` closes the owned store and marks `completed`, so subsequent `sessions list --tui` is not polluted.
+
+### Files / Modules changed
+- `src/unknown_agent/tui/history.py` **new** — `TuiSessionStore` + `TuiSessionRecord`, JSONL transcript, `state_dir/tui_sessions.db`.
+- `src/unknown_agent/tui/shell_app.py` — session bootstrap, replay, persist, finish, picker, current chrome, responsive still intact.
+- `src/unknown_agent/tui/screens.py` — `SessionHistoryScreen` + `SessionDetailScreen` + help rows.
+- `src/unknown_agent/tui/commands.py` — three session commands.
+- `src/unknown_agent/tui/dashboard.py` — `SessionCard` session identity.
+- `src/unknown_agent/cli/commands/misc.py` — `tui --resume`/`--list` parsing + exit resume print + `run_app_shell` forwarding.
+- `src/unknown_agent/cli/commands/sessions.py` — `list --tui` + `tui` + `resume`.
+- `src/unknown_agent/cli/app.py` — global `--resume` shorthand.
+- `src/unknown_agent/version.py` `1.1.4 → 1.1.5`.
+
+### Testing
+- `TuiSessionStore` unit: create/list/search/short-id/transcript/resume/marker/prune/finish.
+- Headless `run_test` at 40/50/60/80/120/150 — breakpoint + `sidebar hidden` + `/sessions` slash + `ctrl+p` palette + `f7` picker + replay still `PASS`; `pytest tests/test_tui_shell.py` (30) and `tests/test_tui_interaction.py` (19) `PASS`.
+- CLI: `sessions list --tui`/`--json`/`--all`, `sessions tui`, `sessions resume --no-launch`, `tui --list` all polished.
+
 ## [1.1.4] - 2026-09-21
 
 ### Fixed — Responsive / Mobile (Termius phone)
