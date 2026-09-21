@@ -62,6 +62,13 @@ class OpenAICompatibleProvider(ModelProvider):
             headers["Authorization"] = f"Bearer {self.api_key}"
         headers.update(self.headers)
         self._client: httpx.AsyncClient | None = None
+        #: Some gateways (unli among them) route a turn that contains a
+        #: ``role: "tool"`` message to a *different* upstream that may be down
+        #: (HTTP 502 ``upstream_error``) while the normal path answers fine.
+        #: When that happens we re-encode tool results as plain user turns once
+        #: and remember it, so a multi-step agent run keeps working instead of
+        #: dying on the second step.
+        self.tool_results_as_user = bool((self.extra or {}).get("tool_results_as_user", False))
 
     # -- HTTP plumbing -----------------------------------------------------
     @property
@@ -109,7 +116,10 @@ class OpenAICompatibleProvider(ModelProvider):
     def _payload(self, request: ModelRequest, *, stream: bool) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model,
-            "messages": [self._encode_message(message) for message in request.messages],
+            "messages": [
+                self._encode_message(message, tool_results_as_user=self.tool_results_as_user)
+                for message in request.messages
+            ],
             "temperature": request.temperature if request.temperature is not None else self.temperature,
             "max_tokens": request.max_output_tokens or self.max_output_tokens,
             "stream": stream,
@@ -135,7 +145,35 @@ class OpenAICompatibleProvider(ModelProvider):
         return payload
 
     @staticmethod
-    def _encode_message(message: Message) -> dict[str, Any]:
+    def _has_tool_results(request: ModelRequest) -> bool:
+        return any(message.role == "tool" for message in request.messages)
+
+    def _switch_tool_result_encoding(self, request: ModelRequest, status_code: int | None) -> bool:
+        """Re-encode tool results as user turns after a gateway upstream failure.
+
+        Returns True when the caller should retry the same request.
+        """
+
+        if self.tool_results_as_user or not self._has_tool_results(request):
+            return False
+        if status_code is not None and status_code not in (500, 502, 503, 504):
+            return False
+        self.tool_results_as_user = True
+        log.warning(
+            "%s rejected a tool-result turn (HTTP %s); re-encoding tool results as user turns",
+            self.vendor,
+            status_code,
+        )
+        return True
+
+    @staticmethod
+    def _encode_message(message: Message, *, tool_results_as_user: bool = False) -> dict[str, Any]:
+        if tool_results_as_user and message.role == "tool":
+            # A tool observation delivered as an ordinary user turn. The model
+            # still sees the result verbatim; only the wire role changes.
+            label = message.name or message.tool_call_id or "tool"
+            body = message.content or "(no output)"
+            return {"role": "user", "content": f"[tool result: {label}]\n{body}"}
         payload: dict[str, Any] = {"role": message.role}
         content: Any = message.content
         if message.images:
@@ -226,6 +264,12 @@ class OpenAICompatibleProvider(ModelProvider):
                     )
                     last_failure = failure
                     last_error = failure.summary()
+
+                    # A gateway whose *tool* upstream is down answers 5xx on any
+                    # multi-step turn. Re-encode once instead of failing the run.
+                    if self._switch_tool_result_encoding(request, response.status_code):
+                        payload = self._payload(request, stream=False)
+                        continue
 
                     # Retryable (429 / 5xx / capacity): bounded, jittered, and
                     # honouring Retry-After.  Never an immediate re-send.
@@ -337,6 +381,12 @@ class OpenAICompatibleProvider(ModelProvider):
                             provider=self.vendor,
                             model=self.model,
                         )
+                        # Nothing has been yielded yet, so a re-encoded retry
+                        # is safe here (never once bytes are on the wire).
+                        if self._switch_tool_result_encoding(request, response.status_code):
+                            payload = self._payload(request, stream=True)
+                            continue
+
                         if failure.retryable and attempt <= self.max_retries:
                             delay = policy.delay(attempt, failure)
                             resilience.cooldown.note(self.cooldown_key, failure)
@@ -379,6 +429,21 @@ class OpenAICompatibleProvider(ModelProvider):
                             )
                         for choice in chunk.get("choices") or []:
                             delta = choice.get("delta") or {}
+                            # Reasoning is a *separate* channel: DeepSeek/R1 and
+                            # OpenRouter send `reasoning_content`, some gateways
+                            # `reasoning`, Anthropic-bridges `thinking`.  Yielding
+                            # it on its own field is what lets the panel render a
+                            # real thinking window instead of faking one.
+                            thinking = (
+                                delta.get("reasoning_content")
+                                or delta.get("reasoning")
+                                or delta.get("thinking")
+                                or ""
+                            )
+                            if isinstance(thinking, dict):
+                                thinking = thinking.get("text") or thinking.get("content") or ""
+                            if thinking:
+                                yield StreamChunk(reasoning=str(thinking))
                             if delta.get("content"):
                                 yield StreamChunk(delta=delta["content"])
                             for tool_delta in delta.get("tool_calls") or []:
@@ -432,6 +497,7 @@ class OpenAICompatibleProvider(ModelProvider):
         raw_usage = body.get("usage") or {}
         return ModelResponse(
             content=message.get("content") or "",
+            reasoning=_reasoning_of(message),
             tool_calls=[call for call in calls if call.name],
             finish_reason=_map_finish(choice.get("finish_reason")),
             usage=Usage(
@@ -445,6 +511,23 @@ class OpenAICompatibleProvider(ModelProvider):
             retries=retries,
             raw={"id": body.get("id"), "finish_reason": choice.get("finish_reason")},
         )
+
+
+def _reasoning_of(message: dict[str, Any]) -> str:
+    """Vendor-neutral extraction of the internal reasoning text.
+
+    DeepSeek/R1 and OpenRouter -> ``reasoning_content``, several gateways ->
+    ``reasoning``, Anthropic bridges -> ``thinking`` (string *or* object).
+    Returns ``""`` when the model produced none, so callers can branch cheaply.
+    """
+
+    for key in ("reasoning_content", "reasoning", "thinking", "reasoning_text"):
+        value = message.get(key)
+        if isinstance(value, dict):
+            value = value.get("text") or value.get("content") or ""
+        if isinstance(value, str) and value.strip():
+            return value
+    return ""
 
 
 def headers_with_auth(headers: dict[str, str], api_key: str | None) -> dict[str, str]:

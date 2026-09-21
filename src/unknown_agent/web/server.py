@@ -6,9 +6,13 @@ Design notes
   device pairing: the browser shows a 6-digit code, the terminal approves it with
   ``ua approve device <code>``.  Sessions are HttpOnly cookies; the shared 0600
   auth file is the IPC channel (see :mod:`web.auth`).
-* **Chat** — one WebSocket per browser; the active provider profile resolves from
-  the same settings the TUI/CLI use.  Streaming goes through the provider's own
-  ``stream()``.  Generation is cancellable (``{"type": "stop"}`` / ``POST /api/stop``).
+* **Chat** — one WebSocket per browser.  Every message runs through
+  :class:`~unknown_agent.web.agent_loop.WebAgent`: the real tool registry,
+  policy engine and executor of the CLI, driven by a streaming tool-calling
+  loop.  Visible text (``delta``), internal reasoning (``reasoning``), tool
+  calls (``tool``) and written files (``artifact``) are separate live channels,
+  and generation is cancellable (``{"type": "stop"}`` / ``POST /api/stop``).
+  The bolt button still routes to the full ``Runner`` (planning + verification).
 * **Attachments** — uploads land in ``<data>/web_uploads``; text/PDF content is
   extracted into the prompt, images ride ``Message.images`` (native vision parts),
   everything else is referenced by path for agent tooling.
@@ -20,6 +24,7 @@ Design notes
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import time
 from collections.abc import Awaitable, Callable
@@ -34,11 +39,10 @@ from pydantic import BaseModel
 from unknown_agent.config.loader import load_settings, save_settings
 from unknown_agent.config.models import McpServerConfig, ProviderConfig, Settings
 from unknown_agent.config.paths import AppPaths
-from unknown_agent.core.models import Message
 from unknown_agent.observability.logging import get_logger
-from unknown_agent.providers.base import ModelRequest
 from unknown_agent.tui.provider_status import active_profile_name
 from unknown_agent.version import __version__
+from unknown_agent.web.agent_loop import WebAgent
 from unknown_agent.web.attachments import AttachmentStore
 from unknown_agent.web.auth import WebAuthStore
 
@@ -129,6 +133,10 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
     limiter = _Limiter()
     history: dict[str, list[dict[str, str]]] = {}
     running: dict[str, asyncio.Task[None]] = {}
+    #: cooperative stop flags, checked by the tool loop between steps
+    stop_flags: dict[str, dict[str, bool]] = {}
+    #: one WebAgent per panel process; rebuilt when the active profile changes
+    _agent_cache: dict[str, WebAgent] = {}
     _emit_tasks: set[asyncio.Task[None]] = set()
     files_opts_path = paths.config_dir / "web_files.json"
     usage_path = paths.data_dir / "web_usage.json"
@@ -336,7 +344,6 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             return
 
         # -- attachments become real model context (both modes) ------------- #
-        settings = _settings()
         opts = _files_opts()
         blocks: list[str] = []
         images: list[str] = []
@@ -359,8 +366,11 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         stored = history.setdefault(sid, [])
         stored.append({"role": "user", "content": user_text})
 
-        # -- route: full agent (real tools) for build/file work ------------- #
-        if agent_pref is True or (agent_pref is None and _needs_agent(text)):
+        # -- route: the bolt button asks for the full Runner --------------- #
+        # (planning + verification).  Every other message takes the streaming
+        # tool loop below, which already has the real tool registry: a build
+        # request writes files on this host instead of ending in an apology.
+        if agent_pref is True:
             await emit({"type": "mode", "mode": "agent"})
             await _run_agent(
                 text, emit, extra="\n\n".join(blocks), provider=run_provider, model=run_model
@@ -368,11 +378,41 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             return
 
         await emit({"type": "mode", "mode": "chat"})
-        if run_provider and run_provider in settings.providers:
-            pname, profile = run_provider, settings.providers[run_provider]
-        else:
-            pname, profile = _profile_pair(settings)
-        if profile is None:
+        await _run_tool_chat(
+            sid,
+            text,
+            emit,
+            images=images,
+            extra="\n\n".join(blocks),
+            provider=run_provider,
+            model=run_model,
+        )
+
+    async def _run_tool_chat(
+        sid: str,
+        text: str,
+        emit: Emit,
+        *,
+        images: list[str] | None = None,
+        extra: str = "",
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> None:
+        """Stream a tool-using answer: reasoning, text, tool calls, artifacts.
+
+        The model gets the same registry, policy engine and executor the CLI
+        uses, so "create a landing page" writes the file on this host instead of
+        apologising about missing access.  Everything is streamed as it happens.
+        ``provider``/``model`` override the active profile for *this message
+        only*: the override lives in the in-memory settings copy, never on disk.
+        """
+
+        settings = _settings()
+        if provider and provider in (settings.providers or {}):
+            settings.provider = provider
+        if model and settings.active_provider is not None:
+            settings.active_provider.model = model
+        if settings.active_provider is None:
             await emit(
                 {
                     "type": "error",
@@ -380,67 +420,72 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
                 }
             )
             return
-        try:
-            from unknown_agent.providers.registry import build_provider
 
-            provider = build_provider(profile, name=pname)
-        except Exception as exc:
-            await emit({"type": "error", "error": f"provider attach failed: {exc}"})
-            return
+        flag = stop_flags.setdefault(sid, {"stop": False})
+        flag["stop"] = False
+        stored = history.setdefault(sid, [])
+        parts: list[str] = []
 
-        system = CHAT_SYSTEM
+        async def relay(msg: dict[str, Any]) -> None:
+            if msg.get("type") == "delta":
+                parts.append(str(msg.get("delta", "")))
+            await emit(msg)
+
+        system_extra = ""
         skillset = _skill_set(settings)
         if skillset is not None:
             try:
-                guidance = skillset.prompt_section(task=text)
-            except Exception:
-                guidance = ""
-            if guidance:
-                system = f"{CHAT_SYSTEM}\n\n{guidance}"
-        messages = [Message(role="system", content=system)]
-        messages += [Message(role=m["role"], content=m["content"]) for m in stored[-HISTORY_LIMIT:]]
-        if images:
-            messages[-1] = Message(role="user", content=user_text, images=images)
-        model = run_model or getattr(profile, "model", "") or provider.model
-        request = ModelRequest(
-            messages=messages,
-            temperature=float(getattr(profile, "temperature", provider.temperature) or 0.7),
-            max_output_tokens=int(
-                getattr(profile, "max_output_tokens", provider.max_output_tokens) or 2048
-            ),
-        )
-        if model:
-            provider.model = model
+                system_extra = skillset.prompt_section(task=text) or ""
+            except Exception:  # pragma: no cover - skills are best effort
+                system_extra = ""
 
-        full = ""
         try:
-            if getattr(provider, "supports_streaming", False):
-                async for chunk in provider.stream(request):
-                    if chunk.error:
-                        raise RuntimeError(chunk.error)
-                    if chunk.delta:
-                        full += chunk.delta
-                        await emit({"type": "delta", "delta": chunk.delta})
-            else:
-                response = await provider.complete(request)
-                if response.error:
-                    raise RuntimeError(response.error)
-                full = response.content or ""
-                await emit({"type": "delta", "delta": full})
+            agent = _web_agent(settings)
+            await agent.setup()
+            if model:
+                # belt and braces: the profile carries the override, and the
+                # provider instance is forced too so adapters that cached their
+                # model at construction time still honour it.
+                agent.provider.model = model
+            result = await agent.chat(
+                task=text,
+                emit=relay,
+                history=stored[:-1],
+                images=images or [],
+                extra=extra,
+                system_extra=system_extra,
+                should_stop=lambda: flag["stop"],
+            )
         except asyncio.CancelledError:
-            if full:
-                stored.append({"role": "assistant", "content": full})
-            await emit({"type": "stopped", "content": full})
+            partial = "".join(parts)
+            if partial:
+                stored.append({"role": "assistant", "content": partial})
+            await emit({"type": "stopped", "content": partial})
             raise
         except Exception as exc:
-            log.debug("web chat error", exc_info=True)
-            if full:
-                stored.append({"role": "assistant", "content": full})
+            log.debug("web tool chat failed", exc_info=True)
+            partial = "".join(parts)
+            if partial:
+                stored.append({"role": "assistant", "content": partial})
             await emit({"type": "error", "error": str(exc)})
             return
-        stored.append({"role": "assistant", "content": full})
-        _bump_usage(requests=1, chars=len(full))
-        await emit({"type": "done", "content": full, "model": model, "provider": pname})
+
+        if result.content:
+            stored.append({"role": "assistant", "content": result.content})
+        _bump_usage(requests=1, chars=len(result.content))
+        await emit(
+            {
+                "type": "done",
+                "content": result.content,
+                "model": result.model,
+                "provider": result.provider,
+                "timing": result.timing.to_dict(),
+                "tools": [tool.to_dict() for tool in result.tools],
+                "files": result.files,
+                "usage": result.usage,
+                "steps": result.steps,
+            }
+        )
 
     # -- full agent mode (real tools on this host) ------------------------- #
     # Route a message to the full Runner only when it looks like an imperative
@@ -691,7 +736,24 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         task.add_done_callback(lambda _t: running.pop(sid, None))
         return task
 
+    def _web_agent(settings: Settings) -> WebAgent:
+        """Return the panel's tool-using agent, rebuilt when the profile changes."""
+
+        candidate = WebAgent(settings=settings, paths=paths)
+        cached = _agent_cache.get("panel")
+        if cached is not None and cached.fingerprint == candidate.fingerprint:
+            return cached
+        if cached is not None:
+            # best effort: release the old provider client
+            with contextlib.suppress(RuntimeError):
+                asyncio.get_running_loop().create_task(cached.aclose())
+        _agent_cache["panel"] = candidate
+        return candidate
+
     def _stop(sid: str) -> bool:
+        flag = stop_flags.get(sid)
+        if flag is not None:
+            flag["stop"] = True
         task = running.get(sid)
         if task is None or task.done():
             return False
@@ -759,8 +821,14 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
     async def status(request: Request) -> JSONResponse:
         if not _session_of(request):
             return _unauth()
-        view = _provider_view(_settings())
+        settings = _settings()
+        view = _provider_view(settings)
         view["files"] = _files_opts()
+        agent = _agent_cache.get("panel")
+        view["cwd"] = str(paths.cwd)
+        view["tool_count"] = len(agent.tool_names) if agent else 0
+        view["tools"] = agent.tool_names if agent else []
+        view["read_only"] = bool(settings.policy.read_only)
         return JSONResponse(view)
 
     @app.get("/api/commands")
@@ -928,6 +996,30 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             _stop(sid)
 
     # -- artifact preview: serve files the agent wrote, rooted at cwd ------- #
+    # Every previewable type is served inline with the right media type so an
+    # <iframe>/<img> renders it; `?download=1` forces a save dialog instead.
+    media_types = {
+        ".html": "text/html; charset=utf-8",
+        ".htm": "text/html; charset=utf-8",
+        ".css": "text/css; charset=utf-8",
+        ".js": "text/javascript; charset=utf-8",
+        ".mjs": "text/javascript; charset=utf-8",
+        ".json": "application/json; charset=utf-8",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".ico": "image/x-icon",
+        ".pdf": "application/pdf",
+        ".md": "text/markdown; charset=utf-8",
+        ".txt": "text/plain; charset=utf-8",
+        ".csv": "text/csv; charset=utf-8",
+        ".xml": "application/xml; charset=utf-8",
+        ".py": "text/plain; charset=utf-8",
+    }
+
     @app.get("/api/files/{full_path:path}")
     async def serve_artifact(request: Request, full_path: str) -> Any:
         from urllib.parse import unquote
@@ -943,7 +1035,12 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         if not candidate.is_relative_to(root) or not candidate.is_file():
             return JSONResponse({"error": "not found"}, status_code=404)
         # no-store: previews must always show the latest content the agent wrote
-        return FileResponse(candidate, headers={"Cache-Control": "no-store"})
+        headers = {"Cache-Control": "no-store"}
+        download = request.query_params.get("download") in {"1", "true", "yes"}
+        if download:
+            headers["Content-Disposition"] = f'attachment; filename="{candidate.name}"'
+        media_type = media_types.get(candidate.suffix.lower())
+        return FileResponse(candidate, headers=headers, media_type=media_type)
 
     # -- dashboard ------------------------------------------------------------- #
     @app.get("/api/dashboard")

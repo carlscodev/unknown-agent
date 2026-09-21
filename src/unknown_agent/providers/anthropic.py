@@ -200,6 +200,10 @@ class AnthropicProvider(ModelProvider):
                         delta = event.get("delta") or {}
                         if delta.get("type") == "text_delta" and delta.get("text"):
                             yield StreamChunk(delta=delta["text"])
+                        elif delta.get("type") == "thinking_delta" and delta.get("thinking"):
+                            # Extended thinking: internal reasoning, kept out of
+                            # the visible answer so the UI can show it separately.
+                            yield StreamChunk(reasoning=delta["thinking"])
                         elif delta.get("type") == "input_json_delta":
                             buffer["json"] = buffer.get("json", "") + (delta.get("partial_json") or "")
                     elif kind == "content_block_stop" and buffer.get("name"):

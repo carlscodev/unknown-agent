@@ -525,3 +525,147 @@ kbd {
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
+/* ==========================================================================
+   reasoning + tool timeline + code/artifact cards (v1.5)
+   ========================================================================== */
+.reasoning {
+  margin: 0 0 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: color-mix(in srgb, var(--acc) 4%, var(--bg0));
+  overflow: hidden;
+}
+.reasoning.live { border-color: var(--acc-line); }
+.reasoning .rhead {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 7px 11px; background: transparent; border: none; border-radius: 0;
+  font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--t3);
+}
+.reasoning .rhead:hover { color: var(--t2); }
+.reasoning .rhead .grow { flex: 1; }
+.reasoning .rhead .clock { text-transform: none; letter-spacing: 0; color: var(--acc); }
+.reasoning .rhead .pulse {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--acc);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+.reasoning .rhead .dots { display: inline-flex; gap: 3px; }
+.reasoning .rhead .dots i {
+  width: 3px; height: 3px; border-radius: 50%; background: var(--acc);
+  animation: pulse 1.1s ease-in-out infinite;
+}
+.reasoning .rhead .dots i:nth-child(2) { animation-delay: .18s; }
+.reasoning .rhead .dots i:nth-child(3) { animation-delay: .36s; }
+.reasoning .rwin {
+  padding: 2px 13px 11px; color: var(--t3); font-size: 12.5px; line-height: 1.6;
+  max-height: 240px; overflow-y: auto;
+}
+.reasoning .rwin p { margin: 0 0 8px; }
+.reasoning .rwin pre {
+  margin: 0 0 8px; font-family: var(--mono); font-size: 12px; color: var(--t3);
+  white-space: pre-wrap;
+}
+.reasoning .rwin .tail {
+  height: 12px; width: 34%;
+  background: linear-gradient(90deg, transparent, var(--acc-dim), transparent);
+  animation: sweep 1.4s ease-in-out infinite; border-radius: 3px;
+}
+@keyframes sweep { 0% { opacity: .2; } 50% { opacity: .8; } 100% { opacity: .2; } }
+.icon.flip { transform: rotate(180deg); }
+
+.tool {
+  margin: 0 0 8px; border: 1px solid var(--line2); border-radius: var(--r-sm);
+  background: var(--bg0); overflow: hidden;
+}
+.tool.done { border-color: rgba(143, 185, 150, 0.28); }
+.tool.failed { border-color: rgba(211, 133, 133, 0.4); }
+.tool .thead {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 6px 11px; background: transparent; border: none; border-radius: 0;
+  font-size: 12px; color: var(--t2); text-align: left;
+}
+.tool .thead:hover { color: var(--t1); }
+.tool .thead .grow { flex: 1; }
+.tool .thead .name { color: var(--t1); font-size: 12px; }
+.tool .thead .args {
+  color: var(--t4); font-size: 11px; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; max-width: 46%;
+}
+.tool .thead .dur { color: var(--t4); font-size: 10.5px; }
+.tool.done .thead .icon { color: var(--ok); }
+.tool.failed .thead .icon { color: var(--err); }
+.tool .spin {
+  width: 11px; height: 11px; border-radius: 50%; flex: none;
+  border: 1.6px solid var(--acc-line); border-top-color: transparent;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.tool .tbar { height: 2px; background: var(--bg3); overflow: hidden; }
+.tool .tbar span {
+  display: block; height: 100%; width: 40%; background: var(--acc);
+  animation: slide 1.1s ease-in-out infinite;
+}
+@keyframes slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(320%); } }
+.tool .tout {
+  margin: 0; padding: 10px 13px; border-top: 1px solid var(--line);
+  font-size: 11.5px; line-height: 1.6; color: var(--t3);
+  max-height: 220px; overflow: auto; white-space: pre-wrap;
+}
+
+/* code card: a small window, never a wall */
+.codeblock pre {
+  max-height: 260px; overflow: auto;
+}
+.codeblock.collapsed pre {
+  max-height: 9em;
+  -webkit-mask-image: linear-gradient(180deg, #000 62%, transparent);
+  mask-image: linear-gradient(180deg, #000 62%, transparent);
+}
+.codeblock .cpreview {
+  border-bottom: 1px solid var(--line);
+  background: #fff; max-height: 320px; overflow: auto;
+}
+.codeblock .cpreview iframe { display: block; width: 100%; height: 320px; border: 0; background: #fff; }
+.codeblock .cpreview.image { display: grid; place-items: center; padding: 12px; }
+.codeblock .cpreview.image img { max-width: 100%; max-height: 280px; }
+
+/* artifact extras */
+.artifact .abar .size { color: var(--t4); font-size: 10.5px; }
+.artifact .frame.pdf { height: 460px; }
+.artifact .img { display: block; max-width: 100%; max-height: 380px; margin: 0 auto; background: var(--bg0); }
+.artifact .md, .artifact .plain {
+  padding: 12px 15px; max-height: 340px; overflow: auto; font-size: 13px; color: var(--t2);
+}
+.artifact .md p { margin: 0 0 9px; }
+.artifact .md pre, .artifact .plain { font-size: 12px; color: var(--t3); white-space: pre-wrap; }
+
+/* run status strip */
+.runstatus {
+  width: min(840px, 100%); margin: 0 auto 8px;
+  display: flex; align-items: center; gap: 9px; flex-wrap: wrap;
+  padding: 6px 13px; border: 1px solid var(--line2); border-radius: 999px;
+  background: var(--bg0); font-size: 11.5px; color: var(--t3);
+  animation: rise .22s var(--ease);
+}
+.runstatus.on { border-color: var(--acc-line); }
+.runstatus .pulse {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--acc);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.runstatus .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); }
+.runstatus .dot.off { background: var(--err); }
+.runstatus .t { font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.1em; font-size: 10.5px; }
+.runstatus .mono { font-size: 11px; color: var(--t2); }
+.runstatus .mono.dim { color: var(--t4); }
+.runstatus .sep { width: 1px; height: 11px; background: var(--line2); }
+
+/* -- mode chip: why this message ran as tools / full agent ------------------ */
+.chip-agent {
+  color: var(--acc);
+  border: 1px solid color-mix(in srgb, var(--acc) 45%, transparent);
+  border-radius: 999px;
+  padding: 1px 8px;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}

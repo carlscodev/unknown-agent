@@ -25,6 +25,70 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `ua run/build/fix` help texts no longer raise `SyntaxWarning` at startup while
   keeping the literal `[orchestration]` in rich output.
 
+## [1.6.0] - 2026-09-21
+
+### Added — the panel agent really has tools, streams and previews
+
+- **Every message now runs through a tool-enabled agent loop**
+  (`src/unknown_agent/web/agent_loop.py`). The web chat builds the same tool
+  registry, policy engine and executor the CLI uses — `read_file`, `write_file`,
+  `apply_patch`, `search_code`, `shell_run`, `git_*`, `test_run` and friends — so
+  "crea una landing page" writes the file on the server instead of answering
+  *"no tengo herramientas conectadas a tu sistema"*. The system prompt lists the
+  live tool names, the working directory, and forbids the model from claiming it
+  has no access. The bolt button still routes to the full `Runner` (planning +
+  verification); the imperative-verb router no longer hijacks normal messages.
+- **Reasoning is a first-class stream channel.** `StreamChunk` gained a
+  `reasoning` field; the OpenAI-compatible adapter parses `reasoning_content` /
+  `reasoning` / `thinking` and the Anthropic adapter parses `thinking_delta`, so
+  internal thinking arrives token by token and is never mixed into the answer.
+- **The thinking window moved into the message.** Reasoning renders where the
+  answer is written, with a pulsing indicator while it is live, a running clock,
+  and the exact seconds once the first visible token lands. It collapses to one
+  line after the turn.
+- **Real timers, everywhere.** The backend measures think / generate / tool time
+  per step (`timing` on the `done` event) and the status strip shows *pensando Xs*
+  and *generando Xs* live, then the final breakdown (pensó · generó ·
+  herramientas · total).
+- **Tool calls are visible and inspectable.** Each call is a row in the message
+  timeline: name, arguments, spinner while running, duration and result when it
+  finishes, with the full output on expand.
+- **Live preview for every artifact.** `/api/files/...` now serves correct media
+  types (HTML, SVG, images, PDF, Markdown, text) inline with `?download=1` to
+  force a save dialog; written files are previewed as iframe / image / rendered
+  Markdown / text instead of HTML only.
+- **Code blocks are small windows with a preview.** Any fenced block is a card
+  with its own scroll (max 9 lines collapsed), copy, download, expand — and a
+  live *preview* button for HTML/SVG blocks rendered from a blob URL.
+- **WebSocket auto-reconnect** with exponential backoff (1s → 15s) plus a
+  reconnecting state; a dropped socket no longer needs a manual refresh.
+- `/api/status` now reports the attached toolset (`tools`, `tool_count`, `cwd`,
+  `read_only`) so the UI can prove the tools are live.
+- **Mode chip for the tool loop too.** Every message announces `mode`
+  (`tools` / `agent`) before the first token, and the message header shows it.
+- **Gateway compatibility:** when a provider answers 5xx on a turn that contains a
+  `role: "tool"` message (unli does, with `502 upstream_error`), tool results are
+  re-encoded as ordinary user turns and the request is retried once; the mode is
+  remembered for the session (`extra.tool_results_as_user = true` forces it).
+- **Never an empty bubble.** Empty completions are retried (2×), the model is asked
+  once more for its closing words, and failing that the panel summarises exactly
+  which tools ran and which files were written.
+
+### Changed
+
+- Chat history stores only visible text; tool results stay in the run's own
+  message list, so transcripts stay readable.
+- `WebAgent` is cached per panel process and rebuilt when the active profile,
+  the workspace or the policy changes.
+
+### Fixed
+
+- Model output is no longer echoed twice (the old "streaming" window replayed the
+  answer text that was already in the transcript).
+- Providers that do not support tool calling degrade honestly: the model is told
+  it has no tool channel and must return complete file contents, and the panel
+  previews the block instead of leaving the user with a partial sketch.
+
 
 ## [1.4.0] - 2026-09-21
 

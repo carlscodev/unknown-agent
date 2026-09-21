@@ -151,8 +151,9 @@ ua runs show --last --events                  # full audit trail of the last run
 ## Web control panel
 
 One command serves a browser dashboard (Vue 3 frontend, FastAPI + WebSocket backend)
-with the terminal's design language: streaming chat, `/` command palette, provider
-and model switching, device management and token rotation.
+with the terminal's design language: an agent that uses **real tools on the server**,
+streaming chat, `/` command palette, provider and model switching, device management
+and token rotation.
 
 ```bash
 ua web                      # prints the access token, serves on :8787
@@ -160,12 +161,36 @@ ua approve device 123456    # pair a browser that shows code 123456
 ua web --show-token         # reprint the token later
 ```
 
+What the panel does with a message:
+
+* **Real tools, live.** Every message runs through a tool-calling agent built on the
+  same registry, policy engine and executor as the CLI — `read_file`, `write_file`,
+  `apply_patch`, `search_code`, `shell_run`, `git_*`, `test_run`… Ask for a landing
+  page and it *writes* it into the server's working directory. The bolt button (⚡)
+  switches to the full hyperagent with planning and verification gates.
+* **Reasoning where it belongs.** Internal thinking streams into a panel inside the
+  message that is being written — with a pulse while it thinks and the exact seconds
+  once the first token lands — instead of a fake window above the composer.
+* **Honest timers.** The status line separates *pensando* from *generando* while the
+  run is live, then reports pensó / generó / herramientas / total.
+* **Tool calls you can inspect.** Each call is a row with its arguments, a spinner
+  while it runs, its duration and, on expand, the exact output.
+* **Live previews.** Files the agent writes are previewed in place (HTML, images, PDF,
+  Markdown, text) with reload / download / open-in-tab; code blocks are compact
+  windows with copy, download and a *preview* button for HTML/SVG.
+* **Never an orphan socket.** The WebSocket reconnects with exponential backoff
+  (1s → 15s) and shows a reconnecting state.
+
+Gateway note: some providers route tool-result turns to a separate upstream. When that
+upstream answers 5xx, Unknown Agent re-encodes tool results as ordinary user turns and
+retries once (`extra.tool_results_as_user = true` forces the behaviour).
+
 Install/upgrade straight from the repo (Debian/Ubuntu system pip is
 externally managed, hence the flag):
 
 ```bash
 python3 -m pip install --break-system-packages --upgrade \
-  "git+https://github.com/klowerg/Unknown-Agent.git@v1.5.0"
+  "git+https://github.com/klowerg/Unknown-Agent.git@v1.6.0"
 ```
 
 Login accepts the token, or a browser can request access and show a 6-digit code the

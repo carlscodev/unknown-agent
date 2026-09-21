@@ -1,34 +1,20 @@
 <script setup>
-import { computed, ref } from "vue";
+/* One turn of the conversation.  An assistant turn is a *timeline*: reasoning,
+   tool calls, text and artifacts, in the order they happened — the same order
+   the server streamed them.  A user turn is just text. */
+import { computed } from "vue";
 import { renderMarkdown } from "../format.js";
 import { Icon } from "../icons.js";
+import Blocks from "./Blocks.vue";
+import ReasoningBlock from "./ReasoningBlock.vue";
+import ToolRow from "./ToolRow.vue";
+import ArtifactCard from "./ArtifactCard.vue";
 
 const props = defineProps({ msg: { type: Object, required: true } });
-const blocks = computed(() => renderMarkdown(props.msg.content));
 
-/* Code blocks stay collapsed unless they are short; long dumps expand on
-   demand so the transcript stays scannable. */
-const COLLAPSE_LINES = 8;
-const expanded = ref({});
-function isLong(b) {
-  return b.code.split("\n").length > COLLAPSE_LINES;
-}
-function toggle(i) {
-  expanded.value = { ...expanded.value, [i]: !expanded.value[i] };
-}
-function copy(code) {
-  if (navigator.clipboard) navigator.clipboard.writeText(code).catch(() => {});
-}
+const legacy = computed(() => !props.msg.segs);
+const blocks = computed(() => renderMarkdown(props.msg.content || ""));
 
-/* Artifact preview: iframe served from the agent host. Reload swaps the key
-   so the browser refetches the latest content (server sends no-store). */
-const previewKey = ref(0);
-function reload() {
-  previewKey.value += 1;
-}
-function open() {
-  window.open(props.msg.artifact.url, "_blank", "noopener");
-}
 </script>
 
 <template>
@@ -97,6 +83,33 @@ function open() {
           <span>{{ msg.artifact.kind === "pdf" ? "PDF document" : "file" }} written by the agent</span>
           <button @click="open">open</button>
         </div>
+        <span class="who">{{ msg.role === "user" ? "Tú" : msg.error ? "Error" : "Agent" }}</span>
+        <span v-if="msg.model" class="when">{{ msg.provider }} / {{ msg.model }}</span>
+        <span v-else-if="msg.command" class="when">command</span>
+        <span v-if="msg.mode === 'agent'" class="when chip-agent">full agent</span>
+        <span v-else-if="msg.mode === 'tools'" class="when chip-agent">tools</span>
+      </div>
+
+      <!-- assistant timeline -->
+      <template v-if="!legacy">
+        <template v-for="(seg, i) in msg.segs" :key="i">
+          <ReasoningBlock
+            v-if="seg.kind === 'reasoning'"
+            :text="seg.text"
+            :thinking="seg.thinking"
+            :secs="seg.secs || 0"
+          />
+          <ToolRow v-else-if="seg.kind === 'tool'" :item="seg.item" />
+          <ArtifactCard v-else-if="seg.kind === 'artifact'" :artifact="seg.artifact" />
+          <div v-else-if="seg.kind === 'text'" class="bubble" :class="{ typing: msg.typing }">
+            <Blocks :blocks="renderMarkdown(seg.text)" />
+          </div>
+        </template>
+      </template>
+
+      <!-- plain text turns (user, slash commands, legacy payloads) -->
+      <div v-else-if="blocks.length || msg.typing" class="bubble" :class="{ typing: msg.typing }">
+        <Blocks :blocks="blocks" />
       </div>
     </div>
   </div>

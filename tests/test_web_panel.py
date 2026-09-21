@@ -7,6 +7,7 @@ talks to instance A (the server), ``ua approve device`` is simulated by instance
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 from typing import ClassVar
@@ -60,7 +61,9 @@ def env(tmp_path: Path):
     data["owner_token"] = OWNER
     auth._save()
     app = create_app(auth=auth, paths=paths, static_dir=static)
-    return SimpleNamespace(paths=paths, auth=auth, app=app, auth_file=auth_file, static=static)
+    return SimpleNamespace(
+        paths=paths, auth=auth, app=app, auth_file=auth_file, static=static, settings=settings
+    )
 
 
 def _client(env) -> httpx.AsyncClient:
@@ -247,13 +250,16 @@ async def test_websocket_chat(env, monkeypatch: pytest.MonkeyPatch) -> None:
         with client.websocket_connect("/api/ws") as ws:
             ws.send_json({"text": "ping"})
             seen = []
-            for _ in range(4):
+            for _ in range(20):
                 msg = ws.receive_json()
                 seen.append(msg)
                 if msg["type"] in {"done", "error"}:
                     break
             kinds = [m["type"] for m in seen]
             assert "delta" in kinds and kinds[-1] == "done"
+            # mode first, then the attached toolset, before the first token
+            assert kinds[0] == "mode"
+            assert "tools" in kinds
 
     # Unauthenticated socket is refused outright.
     from starlette.websockets import WebSocketDisconnect
@@ -396,9 +402,10 @@ async def test_stop_cancels_generation(env, monkeypatch) -> None:
         assert r.status_code == 200
         with client.websocket_connect("/api/ws") as ws:
             ws.send_json({"text": "long one"})
-            first = ws.receive_json()
-            if first["type"] == "mode":  # routing announcement precedes the stream
+            for _ in range(20):  # mode/tools/phase announcements precede the stream
                 first = ws.receive_json()
+                if first["type"] == "delta":
+                    break
             assert first["type"] == "delta"
             ws.send_json({"type": "stop"})
             kinds = []
@@ -640,3 +647,197 @@ async def test_auto_route_sends_questions_to_streaming_chat(env, monkeypatch) ->
         assert r.status_code == 200
         assert r.json()["content"] == "just chatting"
         assert called.get("hit") is True
+
+
+# --------------------------------------------------------------------------- #
+# tool-enabled streaming chat (the fix for "no tengo herramientas")
+# --------------------------------------------------------------------------- #
+def _tooling_provider(monkeypatch: pytest.MonkeyPatch) -> type:
+    """A provider double that thinks, calls a tool, then answers."""
+
+    from unknown_agent.core.models import ToolCall
+    from unknown_agent.providers.base import Usage
+
+    class ToolingProvider:
+        supports_streaming = True
+        supports_tools = True
+        model = "stub-tools"
+        temperature = 0.2
+        max_output_tokens = 512
+        requests: ClassVar[list[Any]] = []
+
+        def __init__(self, *a, **k) -> None:
+            self.turn = 0
+
+        async def stream(self, request):
+            ToolingProvider.requests.append(request)
+            self.turn += 1
+            if self.turn == 1:
+                yield SimpleNamespace(
+                    delta="", reasoning="voy a escribir el archivo", tool_call=None,
+                    error=None, usage=None, finish_reason=None,
+                )
+                yield SimpleNamespace(
+                    delta="", reasoning="", error=None, usage=None,
+                    finish_reason="tool_calls",
+                    tool_call=ToolCall(
+                        id="call_1",
+                        name="write_file",
+                        arguments={"path": "demo/index.html", "content": "<html>LIVE</html>"},
+                    ),
+                )
+            else:
+                yield SimpleNamespace(
+                    delta="Listo", reasoning="", tool_call=None, error=None,
+                    usage=Usage(prompt_tokens=10, completion_tokens=4, total_tokens=14),
+                    finish_reason="stop",
+                )
+
+    import unknown_agent.providers.registry as registry
+
+    monkeypatch.setattr(registry, "build_provider", lambda *_, **__: ToolingProvider())
+    ToolingProvider.requests.clear()
+    return ToolingProvider
+
+
+def _collect_ws(ws, text: str, limit: int = 60):
+    ws.send_json({"text": text})
+    seen = []
+    for _ in range(limit):
+        msg = ws.receive_json()
+        seen.append(msg)
+        if msg["type"] in {"done", "error"}:
+            break
+    return seen
+
+
+async def test_chat_runs_real_tools_and_streams_every_phase(env, monkeypatch) -> None:
+    """A build request must write the file on this host, not apologise."""
+
+    _tooling_provider(monkeypatch)
+
+    with TestClient(env.app) as client:
+        client.post("/api/auth/login", json={"token": OWNER})
+        with client.websocket_connect("/api/ws") as ws:
+            seen = _collect_ws(ws, "crea una landing page")
+
+    kinds = [m["type"] for m in seen]
+    assert "tools" in kinds
+    assert "reasoning" in kinds, "internal thinking must stream on its own channel"
+    assert "tool" in kinds
+    assert "artifact" in kinds
+    assert kinds[-1] == "done"
+
+    # the tool really ran through the policy-checked executor
+    written = env.paths.cwd / "demo" / "index.html"
+    assert written.is_file()
+    assert "LIVE" in written.read_text(encoding="utf-8")
+
+    starts = [m for m in seen if m["type"] == "tool" and m["status"] == "start"]
+    ends = [m for m in seen if m["type"] == "tool" and m["status"] == "end"]
+    assert starts and ends
+    assert starts[0]["name"] == "write_file"
+    assert ends[0]["ok"] is True
+    assert ends[0]["duration_ms"] >= 0
+
+    artifact = [m for m in seen if m["type"] == "artifact"][0]
+    assert artifact["url"] == "/api/files/demo/index.html"
+    assert artifact["kind"] == "html"
+
+    done = seen[-1]
+    assert done["content"] == "Listo"
+    assert done["timing"]["total_ms"] >= 0
+    assert done["tools"][0]["name"] == "write_file"
+
+
+async def test_system_prompt_declares_the_tools(env, monkeypatch) -> None:
+    """The model is told it has tools, so it stops inventing excuses."""
+
+    provider = _tooling_provider(monkeypatch)
+
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post("/api/chat", json={"text": "crea una landing page"})
+        assert r.status_code == 200
+
+    request = provider.requests[0]
+    system = [m for m in request.messages if m.role == "system"][0].content
+    assert "write_file" in system
+    assert "NEVER" in system
+    assert str(env.paths.cwd) in system
+    # the model receives real schemas, not a description of them
+    assert any(tool.name == "write_file" for tool in request.tools)
+
+
+async def test_artifact_is_previewable_with_the_right_media_type(env, monkeypatch) -> None:
+    _tooling_provider(monkeypatch)
+
+    async with _client(env) as c:
+        await _owner_client(c)
+        assert (await c.post("/api/chat", json={"text": "crea una landing"})).status_code == 200
+        r = await c.get("/api/files/demo/index.html")
+        assert r.status_code == 200
+        assert "text/html" in r.headers["content-type"]
+        assert "LIVE" in r.text
+        # and it can be downloaded instead of previewed
+        r = await c.get("/api/files/demo/index.html?download=1")
+        assert "attachment" in r.headers["content-disposition"]
+
+
+async def test_status_reports_the_attached_toolset(env, monkeypatch) -> None:
+    _tooling_provider(monkeypatch)
+
+    async with _client(env) as c:
+        await _owner_client(c)
+        await c.post("/api/chat", json={"text": "hola"})
+        status = await c.get("/api/status")
+        assert status.status_code == 200
+        body = status.json()
+        assert body["tool_count"] > 10
+        assert "write_file" in body["tools"]
+        assert body["cwd"] == str(env.paths.cwd)
+
+
+async def test_stop_flag_ends_the_tool_loop_between_steps(env, monkeypatch) -> None:
+    """Stop is cooperative: the flag stops the loop at the next step boundary."""
+
+    from unknown_agent.core.models import ToolCall
+    from unknown_agent.web.agent_loop import WebAgent
+
+    class LoopingProvider:
+        supports_streaming = True
+        supports_tools = True
+        model = "stub-loop"
+        temperature = 0.2
+        max_output_tokens = 512
+        turns = 0
+
+        async def stream(self, request):
+            LoopingProvider.turns += 1
+            yield SimpleNamespace(
+                delta="", reasoning="", error=None, usage=None, finish_reason="tool_calls",
+                tool_call=ToolCall(id="c", name="list_files", arguments={"path": "."}),
+            )
+
+    import unknown_agent.providers.registry as registry
+
+    monkeypatch.setattr(registry, "build_provider", lambda *_, **__: LoopingProvider())
+
+    agent = WebAgent(settings=env.settings, paths=env.paths)
+    await agent.setup()
+
+    seen: list[dict[str, Any]] = []
+
+    async def emit(msg: dict[str, Any]) -> None:
+        seen.append(msg)
+
+    stop_at = {"n": 0}
+
+    def should_stop() -> bool:
+        stop_at["n"] += 1
+        return stop_at["n"] > 2
+
+    result = await agent.chat(task="recorre el proyecto", emit=emit, should_stop=should_stop)
+    assert LoopingProvider.turns == 2, "the loop must stop at the next boundary"
+    assert len([m for m in seen if m["type"] == "tool" and m["status"] == "end"]) == 2
+    assert result.steps == 2

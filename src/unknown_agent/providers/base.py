@@ -74,6 +74,9 @@ class Usage:
 @dataclass(slots=True)
 class ModelResponse:
     content: str = ""
+    #: Internal reasoning text when the vendor exposes it (``reasoning_content``,
+    #: ``thinking``).  Never mixed into ``content``.
+    reasoning: str = ""
     tool_calls: list[ToolCall] = field(default_factory=list)
     finish_reason: FinishReason = "stop"
     usage: Usage = field(default_factory=Usage)
@@ -95,6 +98,7 @@ class ModelResponse:
     def to_dict(self) -> dict[str, Any]:
         return {
             "content": self.content,
+            "reasoning": self.reasoning,
             "tool_calls": [call.to_dict() for call in self.tool_calls],
             "finish_reason": self.finish_reason,
             "usage": {
@@ -113,9 +117,17 @@ class ModelResponse:
 
 @dataclass(slots=True)
 class StreamChunk:
-    """Incremental model output.  ``delta`` is text; ``tool_call`` is complete."""
+    """Incremental model output.
+
+    ``delta`` is visible text, ``reasoning`` is the model's *internal* thinking
+    (OpenAI ``reasoning_content`` / Anthropic ``thinking``), and ``tool_call``
+    is a complete call.  Keeping reasoning on its own field is what lets a UI
+    show the thinking window exactly where the answer is being written instead
+    of faking one above the composer.
+    """
 
     delta: str = ""
+    reasoning: str = ""
     tool_call: ToolCall | None = None
     finish_reason: FinishReason | None = None
     usage: Usage | None = None
