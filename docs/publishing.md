@@ -42,7 +42,7 @@ unset GITHUB_TOKEN
 
 Pattern (c) is what automation should use: the token exists only in the
 process environment, the remote URL stays clean
-(`https://github.com/OWNER/REPO.git`), and nothing is written to disk.
+(`https://github.com/klowerg/Unknown-Agent.git`), and nothing is written to disk.
 
 **Token hygiene**
 
@@ -55,7 +55,7 @@ process environment, the remote URL stays clean
 ## 2. First push checklist
 
 ```bash
-git remote add origin https://github.com/OWNER/REPO.git   # URL contains NO token
+git remote add origin https://github.com/klowerg/Unknown-Agent.git   # URL contains NO token
 git push -u origin main                                   # auth via helper (above)
 ```
 
@@ -80,8 +80,8 @@ git grep -iE "(api[_-]?key|token|secret)\s*[:=]\s*['\"][A-Za-z0-9_\-]{16,}" -- '
 Users can then verify the installer before executing it:
 
 ```bash
-curl -fsSLO https://github.com/OWNER/REPO/releases/latest/download/install.sh
-curl -fsSLO https://github.com/OWNER/REPO/releases/latest/download/SHA256SUMS
+curl -fsSLO https://github.com/klowerg/Unknown-Agent/releases/latest/download/install.sh
+curl -fsSLO https://github.com/klowerg/Unknown-Agent/releases/latest/download/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing && sh install.sh
 ```
 
@@ -90,14 +90,14 @@ sha256sum -c SHA256SUMS --ignore-missing && sh install.sh
 The workflow deliberately does not publish to PyPI yet. When the name is
 registered, add a `pypi` job using **trusted publishing** (OIDC, no long-lived
 API token in secrets) to `release.yml`. Until then, all install paths use
-`git+https://github.com/OWNER/REPO`, and `install.sh --from-pypi` is the
+`git+https://github.com/klowerg/Unknown-Agent`, and `install.sh --from-pypi` is the
 forward-compatible switch.
 
 ## 5. Placeholder policy
 
-`OWNER/REPO` appears in README, install.sh defaults, and unit files. On first
+`klowerg/Unknown-Agent` appears in README, install.sh defaults, and unit files. On first
 publish, replace it once:
 
 ```bash
-git grep -l "OWNER/REPO" | xargs sed -i 's#OWNER/REPO#youruser/unknown-agent#g'
+git grep -l "klowerg/Unknown-Agent" | xargs sed -i 's#klowerg/Unknown-Agent#klowerg/Unknown-Agent#g'
 ```

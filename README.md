@@ -45,7 +45,7 @@ Linux is the primary platform; macOS and Windows are supported.
 ### One command (recommended, isolated)
 
 ```bash
-pipx install "git+https://github.com/OWNER/REPO"        # or: uv tool install "git+https://github.com/OWNER/REPO"
+pipx install "git+https://github.com/klowerg/Unknown-Agent"        # or: uv tool install "git+https://github.com/klowerg/Unknown-Agent"
 ua setup                                                 # guided first-run onboarding
 ```
 
@@ -58,7 +58,7 @@ system Python. `uv tool` is equivalent and faster.
 Download it, **read it**, then run it — never pipe remote code straight into a shell:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/OWNER/REPO/main/scripts/install.sh
+curl -fsSLO https://raw.githubusercontent.com/klowerg/Unknown-Agent/main/scripts/install.sh
 less install.sh          # inspect what you are about to execute
 sh install.sh            # picks pipx > uv > managed venv, verifies, offers setup
 ```
@@ -75,9 +75,9 @@ sha256sum -c SHA256SUMS --ignore-missing
 ### Other paths
 
 ```bash
-pip install --user "git+https://github.com/OWNER/REPO"                  # plain pip
+pip install --user "git+https://github.com/klowerg/Unknown-Agent"                  # plain pip
 python3 -m venv .venv && .venv/bin/pip install "unknown-agent[all]"     # your own venv
-py -m pip install --user pipx && pipx install "git+https://github.com/OWNER/REPO"   # Windows (PowerShell)
+py -m pip install --user pipx && pipx install "git+https://github.com/klowerg/Unknown-Agent"   # Windows (PowerShell)
 ```
 
 ### After install

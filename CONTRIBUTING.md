@@ -3,7 +3,7 @@
 ## Development setup
 
 ```bash
-git clone https://github.com/OWNER/REPO.git
+git clone https://github.com/klowerg/Unknown-Agent.git
 cd unknown-agent
 python3 -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"
