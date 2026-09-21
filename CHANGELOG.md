@@ -6,6 +6,27 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.6.1] - 2026-09-21
+
+### Added — the answer is never truncated and never only “copy-paste me”
+
+- **Automatic continuation.** When a model answer is cut by the output budget
+  (`finish_reason: "length"`) the loop asks for the exact remainder and stitches
+  the parts together (up to 3 continuations), so a 60 KB landing page arrives
+  complete instead of half-written.
+- **Code blocks become files.** If the provider could not service tool calls and
+  the model answered with the file inside a fenced block, `WebAgent` writes it
+  through the *same* policy-checked executor (`write_file`) and emits a normal
+  artifact card: containment, denylists and protected paths apply unchanged.
+  Blocks without an unambiguous path are skipped, never guessed.
+- Chat output budget is now driven by the active profile
+  (`max_output_tokens`, up from the 2048 chat default).
+
+### Fixed
+
+- Long generations no longer end in a truncated file that cannot be previewed.
+
+
 ## [1.5.0] - 2026-09-21
 
 ### Added

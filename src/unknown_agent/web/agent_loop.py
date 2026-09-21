@@ -29,6 +29,7 @@ the tools run.
 from __future__ import annotations
 
 import asyncio
+import re
 import time
 import uuid
 from dataclasses import dataclass, field
@@ -88,6 +89,10 @@ MAX_TOOL_OUTPUT_CHARS = 6_000
 MAX_ARG_CHARS = 400
 #: How many times we re-ask a gateway that answered with an empty completion.
 EMPTY_TURN_RETRIES = 2
+#: Cap on files recovered from code blocks when the tool channel is down.
+MAX_RECOVERED_FILES = 4
+#: How many times we ask the model to continue an answer cut by the output budget.
+MAX_CONTINUATIONS = 3
 
 
 @dataclass(slots=True)
@@ -146,6 +151,8 @@ class StreamTurn:
     usage: dict[str, int] = field(default_factory=dict)
     first_token_at: float | None = None
     ended_at: float = 0.0
+    #: ``"length"`` means the answer was cut by the output budget.
+    finish_reason: str = ""
 
 
 @dataclass(slots=True)
@@ -213,6 +220,9 @@ class WebAgent:
         self.max_steps = max_steps
         self.auto_approve = auto_approve
         self.project_root = Path(paths.cwd).resolve()
+        #: True once a run had to drop tool calling because the provider could
+        #: not service it; enables the "write the code block to disk" recovery.
+        self._tools_dropped = False
         self.registry: ToolRegistry | None = None
         self.executor: ToolExecutor | None = None
         self.context: ToolContext | None = None
@@ -226,6 +236,12 @@ class WebAgent:
         "Your previous response was empty. Continue now and deliver the result: "
         "either call the tool that does the work (for example write_file) or write the "
         "answer directly. Do not repeat the reasoning."
+    )
+    #: Asked when an answer is cut by the output budget (long files do this).
+    CONTINUE = (
+        "You hit the output limit. Continue EXACTLY where you stopped, with no "
+        "preamble, no apology and no repetition: output only the remaining content, "
+        "starting with the next character after your last one."
     )
     #: Second stage: the tool channel is evidently unusable on this run, so ask
     #: for the work as plain text. The panel previews fenced HTML/SVG blocks
@@ -447,6 +463,10 @@ class WebAgent:
         usage = {"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
         steps = 0
         empty_turns = 0
+        self._tools_dropped = False
+
+        buffer = ""          # visible text of the answer being assembled
+        continuations = 0
 
         for step in range(1, self.max_steps + 1):
             if stop():
@@ -461,8 +481,6 @@ class WebAgent:
                     usage[key] = int(usage.get(key, 0)) + int(value)
             if reasoning:
                 reasoning_parts.append(reasoning)
-            if text:
-                visible_parts.append(text)
 
             # think = wait for the first visible token; gen = time writing output.
             first_token = turn.first_token_at or turn.ended_at
@@ -471,25 +489,43 @@ class WebAgent:
 
             if calls:
                 empty_turns = 0
-            else:
+                if buffer:
+                    visible_parts.append(buffer)
+                    buffer = ""
+            elif not text.strip():
                 # The turn should have produced the answer.  Auto-routing
                 # gateways sometimes return an empty completion (or reasoning
                 # only); ask again instead of leaving an empty bubble.  The
                 # second attempt drops the tool channel: several gateways ignore
                 # tools but happily write the whole file as a code block, and
                 # the panel previews it live.
-                if text.strip():
-                    break
                 empty_turns += 1
                 if empty_turns > EMPTY_TURN_RETRIES or stop():
                     break
                 if empty_turns >= 2:
                     schemas = []
+                    self._tools_dropped = True
                     await emit({"type": "phase", "phase": "generating", "step": step})
                 messages.append(
                     Message.user(self.NUDGE_NO_TOOLS if empty_turns >= 2 else self.NUDGE)
                 )
                 continue
+            elif turn.finish_reason == "length" and continuations < MAX_CONTINUATIONS:
+                # The answer hit the output budget mid-file (long landing pages
+                # do). Ask for the remainder instead of shipping a truncated one.
+                continuations += 1
+                buffer += text
+                visible_parts.append(buffer)
+                buffer = ""
+                messages.append(Message.assistant(content=text))
+                messages.append(Message.user(self.CONTINUE))
+                await emit({"type": "phase", "phase": "generating", "step": step})
+                continue
+            else:
+                buffer += text
+                visible_parts.append(buffer)
+                buffer = ""
+                break
 
             # -- act: run every call through the policy-checked executor ---- #
             messages.append(Message.assistant(content=text, tool_calls=calls))
@@ -574,6 +610,18 @@ class WebAgent:
         if not content and runs:
             content = self._fallback_summary(runs, files)
             await emit({"type": "delta", "step": steps, "delta": content})
+
+        # The tool channel was unusable (gateway-side) and the model answered
+        # with the file inside a code block: write it through the *same*
+        # policy-checked executor, so the user gets the real file on disk — not
+        # just something to copy-paste.
+        if content and self._tools_dropped:
+            for artifact in await self._write_code_blocks(content, emit):
+                if artifact["name"] in seen_files:
+                    continue
+                seen_files.add(artifact["name"])
+                files.append(artifact)
+                await emit({"type": "artifact", **artifact})
         elif not content:
             content = (
                 "El proveedor devolvió una respuesta vacía tras "
@@ -592,6 +640,95 @@ class WebAgent:
             model=str(getattr(self.provider, "model", "") or ""),
             provider=str(getattr(self.provider, "name", "") or self.provider_name),
         )
+
+    _SAFE_SUFFIXES = {
+        ".html", ".htm", ".css", ".js", ".mjs", ".ts", ".tsx", ".jsx", ".json",
+        ".md", ".markdown", ".txt", ".svg", ".py", ".sh", ".yml", ".yaml", ".toml",
+        ".csv", ".sql", ".ini", ".cfg",
+    }
+    _FENCE = re.compile(r"```([A-Za-z0-9_+-]*)\n(.*?)```", re.DOTALL)
+    _PATH_LINE = re.compile(r"^[\s`*\->]*([A-Za-z0-9_./\-]+\.[A-Za-z0-9]{1,5})[\s`*:]*$")
+    _LANG_TO_SUFFIX = {
+        "html": ".html", "css": ".css", "js": ".js", "javascript": ".js",
+        "ts": ".ts", "typescript": ".ts", "python": ".py", "py": ".py",
+        "json": ".json", "markdown": ".md", "md": ".md", "svg": ".svg",
+        "yaml": ".yaml", "yml": ".yml", "bash": ".sh", "sh": ".sh",
+    }
+
+    async def _write_code_blocks(self, text: str, emit: Any) -> list[dict[str, Any]]:
+        """Write the fenced files the model handed back as text, via the executor.
+
+        Only used when tool calling was unavailable *and* the model named the
+        path next to the block: the write still goes through the policy engine,
+        so containment, denylists and protected paths apply exactly as they do
+        for a real ``write_file`` call.  Blocks without an unambiguous path are
+        skipped — the panel still previews them, nothing is guessed.
+        """
+
+        if self.executor is None or not text:
+            return []
+        out: list[dict[str, Any]] = []
+        cursor = 0
+        for match in self._FENCE.finditer(text):
+            preamble = text[cursor : match.start()]
+            cursor = match.end()
+            code = match.group(2)
+            if not code.strip():
+                continue
+            path = self._path_for_block(preamble, match.group(1) or "")
+            if path is None:
+                continue
+            out.extend(await self._write_one(path, code, emit))
+            if len(out) >= MAX_RECOVERED_FILES:
+                break
+        return out
+
+    async def _write_one(self, path: str, code: str, emit: Any) -> list[dict[str, Any]]:
+        call = ToolCall.new("write_file", {"path": path, "content": code})
+        try:
+            await emit(
+                {
+                    "type": "tool",
+                    "status": "start",
+                    "step": 0,
+                    "id": call.id,
+                    "name": "write_file",
+                    "arguments": {"path": path},
+                }
+            )
+            result = await self.executor.execute(call)  # type: ignore[union-attr]
+        except Exception:  # pragma: no cover - never break the answer for this
+            log.debug("web agent: code-block materialisation failed", exc_info=True)
+            return []
+        await emit(
+            {
+                "type": "tool",
+                "status": "end",
+                "step": 0,
+                "id": call.id,
+                "name": "write_file",
+                "ok": bool(result.ok),
+                "summary": (result.output or result.error or "")[:300],
+                "duration_ms": round(result.duration_ms, 1),
+            }
+        )
+        return self._artifacts(call, result) if result.ok else []
+
+    def _path_for_block(self, preamble: str, lang: str) -> str | None:
+        """Infer the target path from the line above the fence (or its language)."""
+
+        lines = [line.rstrip() for line in (preamble or "").splitlines() if line.strip()]
+        for line in reversed(lines[-4:]):
+            found = self._PATH_LINE.match(line)
+            if found:
+                candidate = found.group(1)
+                suffix = Path(candidate).suffix.lower()
+                if suffix and suffix in self._SAFE_SUFFIXES:
+                    return candidate
+        suffix = self._LANG_TO_SUFFIX.get((lang or "").strip().lower())
+        if suffix:
+            return f"generated{suffix}"
+        return None
 
     @staticmethod
     def _fallback_summary(runs: list[ToolRun], files: list[dict[str, Any]]) -> str:
@@ -646,6 +783,7 @@ class WebAgent:
         usage: dict[str, int] = {}
         first_token_at: float | None = None
         generating = False
+        finish_reason = ""
 
         async def start_generating() -> None:
             """Flip the panel from the thinking window to the answer, once."""
@@ -680,6 +818,9 @@ class WebAgent:
                 if call is not None:
                     note_output()
                     calls.append(call)
+                finish = getattr(chunk, "finish_reason", None)
+                if finish:
+                    finish_reason = str(finish)
                 chunk_usage = getattr(chunk, "usage", None)
                 if chunk_usage is not None:
                     usage = {
@@ -704,6 +845,7 @@ class WebAgent:
             if content:
                 text_parts.append(content)
                 await emit({"type": "delta", "step": step, "delta": content})
+            finish_reason = str(getattr(response, "finish_reason", "") or "")
             calls = list(getattr(response, "tool_calls", None) or [])
             usage_obj = getattr(response, "usage", None)
             usage = (
@@ -723,6 +865,7 @@ class WebAgent:
             usage=usage,
             first_token_at=first_token_at,
             ended_at=time.perf_counter(),
+            finish_reason=finish_reason,
         )
 
     def _reasoning_params(self) -> dict[str, Any]:

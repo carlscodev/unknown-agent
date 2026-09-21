@@ -1,7 +1,7 @@
 # Handoff — Unknown Agent
 
 State of the project for the next agent picking this up. Everything below was true at
-the `v1.6.0` release (2026-09-21). The web console ships built assets; rebuild steps
+the `v1.6.1` release (2026-09-21). The web console ships built assets; rebuild steps
 and the live-test recipe are included at the end.
 
 ---
@@ -34,15 +34,23 @@ and the live-test recipe are included at the end.
   artifact previews, `full agent` mode chip, WebSocket auto-reconnect, `SyntaxWarning`
   fix in `cli/commands/agent.py`, plus the `web/qa/qa9.py` + `stub_server.py` +
   `stub_loop.sh` provider-independent browser QA harness.
-- `v1.6.0` (this session) — **the panel agent is a first-class tool-using agent**:
+- `v1.6.1` (this session, current) — **the panel agent is a first-class tool-using
+  agent**:
   - `src/unknown_agent/web/agent_loop.py` (`WebAgent`): builds
     `build_default_registry` + `PolicyEngine` + `ToolExecutor` + `ToolContext` exactly
     like the CLI, then drives a streaming tool-calling loop (max 12 steps) emitting
     `mode` / `tools` / `phase` / `reasoning` / `delta` / `tool` / `artifact` / `done`.
     The system prompt lists the real tool names + cwd and forbids the “I have no
     tools” excuse; when the provider cannot do tool calling it degrades honestly.
-    Guards: empty-completion retries (`EMPTY_TURN_RETRIES`), a closing-summary nudge,
-    a fallback summary, cooperative stop, per-message provider/model override.
+    Guards: empty-completion retries (nudge → drop tools → deliver as text),
+    automatic continuation of answers cut by the output budget
+    (`MAX_CONTINUATIONS`), recovery of fenced files through the executor
+    (`_write_code_blocks`), a fallback summary, cooperative stop, and per-message
+    provider/model override.
+  - **Never a truncated or “copy-paste only” answer.** Verified live against unli
+    with a real 60 KB landing page: reasoning streamed, the tool channel failed,
+    the fallback asked for the file as text, three continuations completed it,
+    and `write_file` materialised it on disk (`demo/landing.html`, 1 809 lines).
   - **Reasoning channel end to end**: `StreamChunk.reasoning` and
     `ModelResponse.reasoning`; parsed from `reasoning_content` / `reasoning` /
     `thinking` (OpenAI-compatible, stream and non-stream) and `thinking_delta`
@@ -131,10 +139,10 @@ answer (think 1.09 s, gen 1.32 s, tools 4 ms).
 
 ## 4. Unfinished / next steps (ordered by value)
 
-1. **Empty-completion resilience is only nudging.** When unli returns reasoning-only
-   three times in a row the run still ends with a notice. Next: fall back to another
-   configured profile automatically (round-robin), or re-send the last turn with a
-   shorter system prompt and a reduced toolset (6 core tools) before giving up.
+1. **Automatic profile failover.** When a provider returns reasoning-only
+   completions or 5xx several times in a row, the panel reports it but does not
+   fail over. Next: round-robin the configured profiles (or re-send the last turn
+   with a shorter system prompt and a 6-tool core set) before giving up.
 2. **Plan approval is auto-yes in the web** (`request_plan_approval=lambda _plan: True`)
    for the bolt path. A real approve/reject card would match the terminal UX.
 3. **Attachments in agent mode are text-only.** Images do not reach a vision model

@@ -841,3 +841,59 @@ async def test_stop_flag_ends_the_tool_loop_between_steps(env, monkeypatch) -> N
     assert LoopingProvider.turns == 2, "the loop must stop at the next boundary"
     assert len([m for m in seen if m["type"] == "tool" and m["status"] == "end"]) == 2
     assert result.steps == 2
+
+
+async def test_code_block_is_written_when_tools_are_unavailable(env, monkeypatch) -> None:
+    """When the provider cannot serve tool calls, a fenced file still lands on disk."""
+
+    from unknown_agent.core.models import ToolCall
+    from unknown_agent.web.agent_loop import WebAgent
+
+    page = "<!doctype html>\n<html><body>Grano Sur</body></html>\n"
+
+    class EmptyThenText:
+        supports_streaming = True
+        supports_tools = True
+        model = "stub-flaky"
+        temperature = 0.2
+        max_output_tokens = 512
+
+        def __init__(self) -> None:
+            self.turn = 0
+
+        async def stream(self, request):
+            self.turn += 1
+            if self.turn <= 2:
+                # gateway degradation: reasoning only, no content, no tool calls
+                yield SimpleNamespace(
+                    delta="", reasoning="pensando…", tool_call=None, error=None,
+                    usage=None, finish_reason="stop",
+                )
+                return
+            tools = bool(getattr(request, "tools", ()) or ())
+            if tools:
+                raise AssertionError("the retry must drop the tool channel")
+            for word in ["demo/landing.html\n", "```html\n", page, "```"]:
+                yield SimpleNamespace(
+                    delta=word, reasoning="", tool_call=None, error=None,
+                    usage=None, finish_reason=None,
+                )
+
+    import unknown_agent.providers.registry as registry
+
+    monkeypatch.setattr(registry, "build_provider", lambda *_, **__: EmptyThenText())
+
+    agent = WebAgent(settings=env.settings, paths=env.paths)
+    await agent.setup()
+    seen: list[dict[str, Any]] = []
+
+    async def emit(msg: dict[str, Any]) -> None:
+        seen.append(msg)
+
+    result = await agent.chat(task="crea una landing page", emit=emit)
+    assert "Grano Sur" in result.content
+    written = env.paths.cwd / "demo" / "landing.html"
+    assert written.is_file(), "the code block must be materialised through the executor"
+    assert "Grano Sur" in written.read_text(encoding="utf-8")
+    assert [f["name"] for f in result.files] == ["demo/landing.html"]
+    assert any(m["type"] == "artifact" for m in seen)
