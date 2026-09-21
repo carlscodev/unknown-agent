@@ -34,7 +34,7 @@ export const api = {
     form.append("file", file);
     return req("/api/upload", { method: "POST", body: form });
   },
-  chat: (text, attachments) => post("/api/chat", { text, attachments }),
+  chat: (text, attachments, agent) => post("/api/chat", { text, attachments, agent }),
   dashboard: () => req("/api/dashboard"),
   addProvider: (p) => post("/api/dashboard/provider", p),
   removeProvider: (name) => post("/api/dashboard/provider/remove", { name }),

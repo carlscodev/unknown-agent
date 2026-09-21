@@ -165,7 +165,7 @@ externally managed, hence the flag):
 
 ```bash
 python3 -m pip install --break-system-packages --upgrade \
-  "git+https://github.com/klowerg/Unknown-Agent.git@v1.3.1"
+  "git+https://github.com/klowerg/Unknown-Agent.git@v1.4.0"
 ```
 
 Login accepts the token, or a browser can request access and show a 6-digit code the

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from types import SimpleNamespace
+from typing import ClassVar
 
 import httpx
 import pytest
@@ -436,3 +437,140 @@ async def test_dashboard_mcp_and_providers(env) -> None:
 
         r = await c.post("/api/dashboard/agent", json={"mode": "plan", "max_steps": 21})
         assert r.json()["mode"] == "plan" and r.json()["max_steps"] == 21
+
+
+# --------------------------------------------------------------------------- #
+# full agent mode: real Runner with tools + live artifact preview
+# --------------------------------------------------------------------------- #
+class _StubRunner:
+    """Stands in for the real Runner; exercises the hook -> event wiring."""
+
+    instances: ClassVar[list] = []
+
+    def __init__(self, loaded, request=None, hooks=None):
+        self.request = request
+        self.hooks = hooks
+        _StubRunner.instances.append(self)
+
+    async def setup(self):
+        self.hooks.on_thought("planning the landing page")
+        self.hooks.on_tool_start(SimpleNamespace(name="write_file"))
+        self.hooks.on_tool_end(
+            SimpleNamespace(name="write_file"),
+            SimpleNamespace(ok=True, summary="wrote demo/index.html"),
+        )
+
+    async def execute(self):
+        step = SimpleNamespace(decision=SimpleNamespace(answer="Listo: escribi demo/index.html"))
+        return SimpleNamespace(
+            summary="boilerplate summary",
+            outcome=SimpleNamespace(steps=[step]),
+            ok=True,
+            blockers=[],
+            status="completed",
+            files_changed=["demo/index.html"],
+            state=SimpleNamespace(model="auto", provider="unli"),
+        )
+
+
+async def test_agent_mode_runs_real_runner_and_emits_artifact(env, monkeypatch) -> None:
+    _StubRunner.instances.clear()
+    import unknown_agent.core.runner as runner_mod
+
+    monkeypatch.setattr(runner_mod, "Runner", _StubRunner)
+
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post("/api/chat", json={"text": "crea una landing", "agent": True})
+        assert r.status_code == 200
+        body = r.json()
+        assert body["content"] == "Listo: escribi demo/index.html"
+        assert body["artifacts"] == [
+            {"type": "artifact", "url": "/api/files/demo/index.html", "name": "demo/index.html"}
+        ]
+        # the real Runner received the task and auto-approve for non-interactive use
+        assert len(_StubRunner.instances) == 1
+        assert _StubRunner.instances[0].request.task == "crea una landing"
+        assert _StubRunner.instances[0].request.yes is True
+
+        # and the preview URL actually serves what the agent wrote
+        demo = env.paths.cwd / "demo"
+        demo.mkdir()
+        (demo / "index.html").write_text("<html>AGENT-BUILT</html>", encoding="utf-8")
+        r = await c.get("/api/files/demo/index.html")
+        assert r.status_code == 200
+        assert "AGENT-BUILT" in r.text
+
+
+async def test_agent_mode_blocked_run_reports_blockers(env, monkeypatch) -> None:
+    import unknown_agent.core.runner as runner_mod
+
+    class _BlockedRunner(_StubRunner):
+        async def setup(self):
+            return None
+
+        async def execute(self):
+            return SimpleNamespace(
+                summary="",
+                ok=False,
+                blockers=["verification failed"],
+                status="blocked",
+                files_changed=[],
+                state=SimpleNamespace(model="", provider=""),
+            )
+
+    monkeypatch.setattr(runner_mod, "Runner", _BlockedRunner)
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post("/api/chat", json={"text": "arregla el bug", "agent": True})
+        assert r.status_code == 502
+        assert "verification failed" in r.json()["error"]
+
+
+async def test_files_endpoint_requires_auth_and_blocks_traversal(env) -> None:
+    (env.paths.cwd / "secret.txt").write_text("nope", encoding="utf-8")
+    outside = env.paths.cwd.parent / "outside.txt"
+    outside.write_text("outside", encoding="utf-8")
+
+    async with _client(env) as c:
+        r = await c.get("/api/files/secret.txt")
+        assert r.status_code == 401  # no session
+
+        await _owner_client(c)
+        r = await c.get("/api/files/secret.txt")
+        assert r.status_code == 200
+        r = await c.get("/api/files/..%2Foutside.txt")
+        assert r.status_code == 404  # traversal stays rooted at cwd
+        r = await c.get("/api/files/missing.txt")
+        assert r.status_code == 404
+
+
+async def test_auto_route_sends_questions_to_streaming_chat(env, monkeypatch) -> None:
+    called = {}
+
+    class StubProvider:
+        supports_streaming = False
+        model = "stub-1"
+        temperature = 0.2
+        max_output_tokens = 512
+
+        async def complete(self, request):
+            called["hit"] = True
+            return SimpleNamespace(content="just chatting", error=None)
+
+    import unknown_agent.core.runner as runner_mod
+
+    def _boom(*_a, **_k):  # agent path must not be taken
+        raise AssertionError("full agent should not run for a question")
+
+    monkeypatch.setattr(runner_mod, "Runner", _boom)
+    import unknown_agent.providers.registry as registry
+
+    monkeypatch.setattr(registry, "build_provider", lambda *_, **__: StubProvider())
+
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post("/api/chat", json={"text": "what can you do with files?"})
+        assert r.status_code == 200
+        assert r.json()["content"] == "just chatting"
+        assert called.get("hit") is True

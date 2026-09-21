@@ -1,0 +1,16 @@
+{
+  "mobile_overflow": {
+    "sw": 390,
+    "iw": 390
+  },
+  "preview_src": "/api/files/qa8/demo8.html",
+  "preview_ok": true,
+  "desktop_overflow_collapsed": {
+    "sw": 1440,
+    "iw": 1440
+  },
+  "desktop_overflow_expanded": {
+    "sw": 1440,
+    "iw": 1440
+  }
+}

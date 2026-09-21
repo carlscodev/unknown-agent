@@ -6,6 +6,35 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-21
+
+### Added — the web agent is now a real agent
+
+- **Full agent in the panel.** Build and file requests in the web chat now run the
+  complete hyperagent loop on the server: real tools (read/write/exec/search/git),
+  planning, verification gates and stop support — the same engine as the terminal.
+  The bolt button in the composer forces agent mode on every message; by default a
+  small imperative-verb router decides per message, and plain conversation keeps the
+  fast streaming path.
+- **Live HTML preview.** When a run writes `.html`/`.htm` files, the transcript gets
+  a preview card with an inline iframe served from the server (`/api/files/...`,
+  session-authenticated, rooted at the working directory with traversal guards),
+  plus reload and open-in-tab controls.
+- **Internal activity monitor.** The live window above the composer now shows what
+  the model is doing internally — reasoning thoughts and tool calls as they happen —
+  with a thinking pulse and real elapsed timers for the thinking and generating
+  phases, instead of echoing the output text.
+- **Collapsible code blocks.** Code in answers collapses by default when longer than
+  8 lines (expand/collapse + copy in the block header) so the transcript stays
+  scannable.
+- `HANDOFF.md` at the repo root documents unfinished work for the next agent.
+
+### Changed
+
+- The final message of an agent run now uses the model's own closing words
+  (`AgentDecision.answer`) when available, instead of the runner's boilerplate.
+
+
 ## [1.3.1] - 2026-09-21
 
 ### Fixed — `ua web` first-run crash on fresh installs

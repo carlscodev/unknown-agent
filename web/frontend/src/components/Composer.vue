@@ -12,8 +12,9 @@ const props = defineProps({
   activeModel: { type: String, default: "" },
   isOwner: { type: Boolean, default: false },
   history: { type: Array, default: () => [] },
+  agentMode: { type: String, default: "auto" },
 });
-const emit = defineEmits(["send", "stop", "provider", "model", "toast"]);
+const emit = defineEmits(["send", "stop", "provider", "model", "agentmode", "toast"]);
 
 const text = ref("");
 const area = ref(null);
@@ -217,6 +218,19 @@ defineExpose({ focus });
         @click="attachOpen = !attachOpen"
       >
         <Icon name="clip" />
+      </button>
+      <button
+        class="icon-btn"
+        :class="{ on: agentMode === 'on' }"
+        :aria-label="agentMode === 'on' ? 'full agent on' : 'full agent auto'"
+        :title="
+          agentMode === 'on'
+            ? 'Full agent: every message runs with real tools on the server'
+            : 'Auto: build and file requests run the full agent with real tools'
+        "
+        @click="$emit('agentmode', agentMode === 'on' ? 'auto' : 'on')"
+      >
+        <Icon name="bolt" />
       </button>
 
       <span class="sel">

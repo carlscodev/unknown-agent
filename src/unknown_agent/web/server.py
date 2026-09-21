@@ -75,6 +75,7 @@ class _Body(BaseModel):
     reasoning: str | None = None
     max_upload_mb: int | None = None
     auto_extract: bool | None = None
+    agent: bool | None = None
 
 
 def _multipart_ok() -> bool:
@@ -127,6 +128,7 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
     limiter = _Limiter()
     history: dict[str, list[dict[str, str]]] = {}
     running: dict[str, asyncio.Task[None]] = {}
+    _emit_tasks: set[asyncio.Task[None]] = set()
     files_opts_path = paths.config_dir / "web_files.json"
     usage_path = paths.data_dir / "web_usage.json"
     uploads = AttachmentStore(paths.data_dir / "web_uploads")
@@ -306,9 +308,7 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         )
         try:
             fetched = await asyncio.wait_for(
-                fetch_models(
-                    entry, api_key=api_key, base_url=getattr(profile, "base_url", None)
-                ),
+                fetch_models(entry, api_key=api_key, base_url=getattr(profile, "base_url", None)),
                 timeout=8.0,
             )
             return [m.id for m in fetched], "live"
@@ -323,30 +323,18 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         return "\n".join(rows[:40]) or "no models listed"
 
     async def _run_chat(
-        sid: str, text: str, emit: Emit, attach_ids: list[str] | None = None
+        sid: str,
+        text: str,
+        emit: Emit,
+        attach_ids: list[str] | None = None,
+        agent_pref: bool | None = None,
     ) -> None:
         if await _run_command(sid, text, emit):
             return
+
+        # -- attachments become real model context (both modes) ------------- #
         settings = _settings()
         opts = _files_opts()
-        pname, profile = _profile_pair(settings)
-        if profile is None:
-            await emit(
-                {
-                    "type": "error",
-                    "error": "no provider configured — run `ua setup` on the server, then retry",
-                }
-            )
-            return
-        try:
-            from unknown_agent.providers.registry import build_provider
-
-            provider = build_provider(profile, name=pname)
-        except Exception as exc:
-            await emit({"type": "error", "error": f"provider attach failed: {exc}"})
-            return
-
-        # -- attachments become real model context ------------------------- #
         blocks: list[str] = []
         images: list[str] = []
         for aid in attach_ids or []:
@@ -367,6 +355,29 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
 
         stored = history.setdefault(sid, [])
         stored.append({"role": "user", "content": user_text})
+
+        # -- route: full agent (real tools) for build/file work ------------- #
+        if agent_pref is True or (agent_pref is None and _needs_agent(text)):
+            await _run_agent(text, emit, extra="\n\n".join(blocks))
+            return
+
+        pname, profile = _profile_pair(settings)
+        if profile is None:
+            await emit(
+                {
+                    "type": "error",
+                    "error": "no provider configured — run `ua setup` on the server, then retry",
+                }
+            )
+            return
+        try:
+            from unknown_agent.providers.registry import build_provider
+
+            provider = build_provider(profile, name=pname)
+        except Exception as exc:
+            await emit({"type": "error", "error": f"provider attach failed: {exc}"})
+            return
+
         system = CHAT_SYSTEM
         skillset = _skill_set(settings)
         if skillset is not None:
@@ -377,9 +388,7 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             if guidance:
                 system = f"{CHAT_SYSTEM}\n\n{guidance}"
         messages = [Message(role="system", content=system)]
-        messages += [
-            Message(role=m["role"], content=m["content"]) for m in stored[-HISTORY_LIMIT:]
-        ]
+        messages += [Message(role=m["role"], content=m["content"]) for m in stored[-HISTORY_LIMIT:]]
         if images:
             messages[-1] = Message(role="user", content=user_text, images=images)
         model = getattr(profile, "model", "") or provider.model
@@ -423,10 +432,217 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         _bump_usage(requests=1, chars=len(full))
         await emit({"type": "done", "content": full, "model": model, "provider": pname})
 
-    def _spawn(sid: str, text: str, emit: Emit, attach_ids: list[str] | None) -> asyncio.Task[None]:
+    # -- full agent mode (real tools on this host) ------------------------- #
+    # Route a message to the full Runner only when it looks like an imperative
+    # build/file task: an action verb at the start AND a file/site noun, or a
+    # strong keyword on its own.  Questions and chit-chat keep the fast
+    # streaming chat path.
+    _agent_starts = (
+        "crea",
+        "crear",
+        "creame",
+        "creo",
+        "escribe",
+        "escribir",
+        "genera",
+        "generar",
+        "haz",
+        "hacer",
+        "arregla",
+        "arreglar",
+        "borra",
+        "borrar",
+        "elimina",
+        "mueve",
+        "mover",
+        "renombra",
+        "renombrar",
+        "instala",
+        "instalar",
+        "ejecuta",
+        "ejecutar",
+        "corre",
+        "correr",
+        "monta",
+        "montar",
+        "crea-me",
+        "create",
+        "write",
+        "build",
+        "generate",
+        "make",
+        "fix",
+        "delete",
+        "remove",
+        "move",
+        "rename",
+        "install",
+        "run",
+        "scaffold",
+        "deploy",
+        "set",
+        "setup",
+    )
+    _agent_nouns = (
+        "archivo",
+        "archivos",
+        "fichero",
+        "carpeta",
+        "carpetas",
+        "folder",
+        "dir",
+        "directorio",
+        "script",
+        "landing",
+        "página",
+        "pagina",
+        "sitio",
+        "site",
+        "website",
+        "web",
+        "html",
+        "css",
+        "json",
+        "csv",
+        "api",
+        "app",
+        "aplicación",
+        "aplicacion",
+        "programa",
+        "bot",
+        "server",
+        "servidor",
+        "test",
+        "prueba",
+        "file",
+        "files",
+        "project",
+        "proyecto",
+    )
+    _agent_always = ("landing", "scaffold", "html", "landing page", "pagina web")
+
+    def _needs_agent(text: str) -> bool:
+        low = text.lower().strip()
+        if any(k in low for k in _agent_always):
+            return True
+        tokens = low.replace(",", " ").replace(".", " ").split()
+        if not tokens:
+            return False
+        first = tokens[0].rstrip(":;!?")
+        if first not in _agent_starts:
+            return False
+        return any(n in tokens for n in _agent_nouns)
+
+    def _emit_soon(emit: Emit, msg: dict[str, Any]) -> None:
+        """Schedule an async emit from the loop's sync hook callbacks."""
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:  # pragma: no cover
+            return
+        task = loop.create_task(emit(msg))
+        _emit_tasks.add(task)
+        task.add_done_callback(_emit_tasks.discard)
+
+    async def _run_agent(text: str, emit: Emit, extra: str = "") -> None:
+        """Run the real hyperagent (tools, planning, verification) for this message."""
+        from urllib.parse import quote
+
+        from unknown_agent.core.loop import LoopHooks
+        from unknown_agent.core.runner import Runner, RunRequest
+
+        await emit({"type": "phase", "phase": "agent"})
+        loaded = load_settings(paths=paths)
+        stop_flag = {"stop": False}
+
+        def thought(t: str) -> None:
+            _emit_soon(emit, {"type": "thought", "text": str(t)[:400]})
+
+        def tool_start(call: Any) -> None:
+            _emit_soon(
+                emit,
+                {"type": "tool", "name": getattr(call, "name", "?"), "status": "start"},
+            )
+
+        def tool_end(call: Any, result: Any) -> None:
+            _emit_soon(
+                emit,
+                {
+                    "type": "tool",
+                    "name": getattr(call, "name", "?"),
+                    "status": "end",
+                    "ok": bool(getattr(result, "ok", True)),
+                    "summary": str(getattr(result, "summary", "") or "")[:300],
+                },
+            )
+
+        def verify(report: Any) -> None:
+            _emit_soon(emit, {"type": "verify", "ok": bool(getattr(report, "passed", True))})
+
+        hooks = LoopHooks(
+            on_thought=thought,
+            on_tool_start=tool_start,
+            on_tool_end=tool_end,
+            on_verification=verify,
+            should_stop=lambda: stop_flag["stop"],
+            request_plan_approval=lambda _plan: True,
+        )
+        request = RunRequest(
+            task=text,
+            non_interactive=True,
+            yes=True,
+            extra_instructions=extra or None,
+        )
+        runner = Runner(loaded, request=request, hooks=hooks)
+        try:
+            await runner.setup()
+            result = await runner.execute()
+        except asyncio.CancelledError:
+            stop_flag["stop"] = True
+            await emit({"type": "stopped", "content": ""})
+            raise
+        except Exception as exc:  # surface the real failure, never hang
+            log.debug("web agent run failed", exc_info=True)
+            await emit({"type": "error", "error": f"agent run failed: {exc}"})
+            return
+
+        # Prefer the model's own final words; fall back to the run summary.
+        answer = ""
+        outcome = getattr(result, "outcome", None)
+        for step in reversed(getattr(outcome, "steps", []) or []):
+            if getattr(step.decision, "answer", ""):
+                answer = step.decision.answer
+                break
+        summary = answer or result.summary or "(run finished without a summary)"
+        await emit({"type": "delta", "delta": summary})
+        for changed in result.files_changed:
+            if changed.lower().endswith((".html", ".htm")):
+                await emit(
+                    {"type": "artifact", "url": f"/api/files/{quote(changed)}", "name": changed}
+                )
+        if not result.ok:
+            blockers = "; ".join(result.blockers) or str(result.status)
+            await emit({"type": "error", "error": f"run not completed: {blockers}"})
+            return
+        _bump_usage(requests=1, chars=len(summary))
+        await emit(
+            {
+                "type": "done",
+                "content": summary,
+                "model": str(result.state.model or ""),
+                "provider": str(result.state.provider or ""),
+            }
+        )
+
+    def _spawn(
+        sid: str,
+        text: str,
+        emit: Emit,
+        attach_ids: list[str] | None,
+        agent_pref: bool | None = None,
+    ) -> asyncio.Task[None]:
         async def _wrap() -> None:
             try:
-                await _run_chat(sid, text, emit, attach_ids)
+                await _run_chat(sid, text, emit, attach_ids, agent_pref)
             except asyncio.CancelledError:
                 return
             except Exception:
@@ -582,8 +798,13 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         meta = uploads.save(blob, file.filename or "upload.bin")
         _bump_usage(uploads=1)
         return JSONResponse(
-            {"id": meta["id"], "name": meta["name"], "kind": meta["kind"],
-             "size": meta["size"], "size_human": meta["size_human"]}
+            {
+                "id": meta["id"],
+                "name": meta["name"],
+                "kind": meta["kind"],
+                "size": meta["size"],
+                "size_human": meta["size_human"],
+            }
         )
 
     async def upload_unavailable(request: Request) -> JSONResponse:
@@ -615,17 +836,19 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         text = (body.text or "").strip()
         if not text:
             return JSONResponse({"error": "empty message"}, status_code=400)
-        out: dict[str, Any] = {"deltas": [], "content": "", "error": None}
+        out: dict[str, Any] = {"deltas": [], "content": "", "error": None, "artifacts": []}
 
         async def emit(msg: dict[str, Any]) -> None:
             if msg.get("type") == "delta":
                 out["deltas"].append(msg.get("delta", ""))
+            elif msg.get("type") == "artifact":
+                out["artifacts"].append(msg)
             elif msg.get("type") in {"message", "done", "stopped"}:
                 out["content"] = msg.get("content", "") or out["content"]
             elif msg.get("type") == "error":
                 out["error"] = msg.get("error")
 
-        await _run_chat(sid, text, emit, body.attachments)
+        await _run_chat(sid, text, emit, body.attachments, body.agent)
         if out["error"] and not out["content"]:
             return JSONResponse({"error": out["error"]}, status_code=502)
         return JSONResponse(out)
@@ -652,13 +875,37 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
                 async def emit(msg: dict[str, Any]) -> None:
                     await websocket.send_json(msg)
 
-                _spawn(sid, text, emit, payload.get("attachments") or [])
+                _spawn(
+                    sid,
+                    text,
+                    emit,
+                    payload.get("attachments") or [],
+                    payload.get("agent") if isinstance(payload.get("agent"), bool) else None,
+                )
         except WebSocketDisconnect:
             _stop(sid)
             return
         except Exception:
             log.debug("web socket error", exc_info=True)
             _stop(sid)
+
+    # -- artifact preview: serve files the agent wrote, rooted at cwd ------- #
+    @app.get("/api/files/{full_path:path}")
+    async def serve_artifact(request: Request, full_path: str) -> Any:
+        from urllib.parse import unquote
+
+        if not _session_of(request):
+            return _unauth()
+        try:
+            rel = unquote(full_path)
+        except Exception:
+            return JSONResponse({"error": "bad path"}, status_code=400)
+        root = paths.cwd.resolve()
+        candidate = (root / rel).resolve()
+        if not candidate.is_relative_to(root) or not candidate.is_file():
+            return JSONResponse({"error": "not found"}, status_code=404)
+        # no-store: previews must always show the latest content the agent wrote
+        return FileResponse(candidate, headers={"Cache-Control": "no-store"})
 
     # -- dashboard ------------------------------------------------------------- #
     @app.get("/api/dashboard")

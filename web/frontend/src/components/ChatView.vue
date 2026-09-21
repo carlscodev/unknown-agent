@@ -18,9 +18,38 @@ const busy = ref(false);
 const streamText = ref("");
 const live = ref(false);
 const transcript = ref(null);
+const agentMode = ref("auto"); // "auto" | "on"
 let ws = null;
 
+/* internal-activity window + real phase timers */
+const activity = ref([]);
+const phase = ref("");
+const thinkSecs = ref(0);
+const genSecs = ref(0);
+let t0 = 0;
+let genT = 0;
+let tickId = 0;
+
 defineExpose({ live });
+
+function startTimers() {
+  t0 = performance.now();
+  genT = 0;
+  thinkSecs.value = 0;
+  genSecs.value = 0;
+  clearInterval(tickId);
+  tickId = setInterval(() => {
+    const now = performance.now();
+    thinkSecs.value = ((genT || now) - t0) / 1000;
+    genSecs.value = genT ? (now - genT) / 1000 : 0;
+  }, 100);
+}
+function stopTimers() {
+  clearInterval(tickId);
+  const now = performance.now();
+  thinkSecs.value = ((genT || now) - t0) / 1000;
+  genSecs.value = genT ? (now - genT) / 1000 : 0;
+}
 
 async function refresh() {
   try {
@@ -44,8 +73,37 @@ function scrollDown() {
   });
 }
 
+function lastTyping() {
+  for (let i = messages.value.length - 1; i >= 0; i--) {
+    if (messages.value[i].typing) return messages.value[i];
+  }
+  return null;
+}
+
 function applyWs(msg) {
-  if (msg.type === "delta") {
+  if (msg.type === "phase") {
+    phase.value = "thinking";
+  } else if (msg.type === "thought") {
+    activity.value.push({ kind: "thought", text: msg.text });
+  } else if (msg.type === "tool") {
+    if (msg.status === "start") {
+      activity.value.push({ kind: "tool", text: `${msg.name} running…` });
+    } else {
+      activity.value.push({
+        kind: "tool",
+        text: `${msg.name}${msg.summary ? " — " + msg.summary : ""}${msg.ok ? "" : " (failed)"}`,
+      });
+    }
+  } else if (msg.type === "verify") {
+    activity.value.push({
+      kind: "verify",
+      text: msg.ok ? "verification passed" : "verification failed",
+    });
+  } else if (msg.type === "delta") {
+    if (!genT) {
+      phase.value = "generating";
+      genT = performance.now();
+    }
     streamText.value += msg.delta;
     let last = messages.value[messages.value.length - 1];
     if (!last || last.role !== "assistant" || !last.typing) {
@@ -53,35 +111,43 @@ function applyWs(msg) {
       messages.value.push(last);
     }
     last.content += msg.delta;
+  } else if (msg.type === "artifact") {
+    messages.value.push({ role: "assistant", content: "", artifact: msg });
   } else if (msg.type === "message") {
     messages.value.push({ role: "assistant", content: msg.content, command: true });
   } else if (msg.type === "done") {
-    const last = messages.value[messages.value.length - 1];
-    if (last && last.typing) {
+    const last = lastTyping();
+    if (last) {
       last.typing = false;
       last.model = msg.model;
       last.provider = msg.provider;
     }
-    busy.value = false;
-    // Let the rolling window linger so the generation reads as intentional,
-    // then fade it out.
-    setTimeout(() => (streamText.value = ""), 1500);
+    finishRun();
   } else if (msg.type === "stopped") {
-    const last = messages.value[messages.value.length - 1];
-    if (last && last.typing) {
+    const last = lastTyping();
+    if (last) {
       last.typing = false;
       last.content = (last.content || "") + "\n\n[stopped]";
     }
-    busy.value = false;
-    streamText.value = "";
+    finishRun();
   } else if (msg.type === "error") {
-    const last = messages.value[messages.value.length - 1];
-    if (last && last.typing) last.typing = false;
+    const last = lastTyping();
+    if (last) last.typing = false;
     messages.value.push({ role: "assistant", content: msg.error, error: true });
-    busy.value = false;
-    streamText.value = "";
+    finishRun();
   }
   scrollDown();
+}
+
+function finishRun() {
+  busy.value = false;
+  stopTimers();
+  // Let the activity window linger so the run reads as intentional, then clear.
+  setTimeout(() => {
+    streamText.value = "";
+    activity.value = [];
+    phase.value = "";
+  }, 1800);
 }
 
 function connect() {
@@ -110,14 +176,19 @@ async function send(text, attachIds) {
   sent.value.push(text);
   busy.value = true;
   streamText.value = "";
+  activity.value = [];
+  phase.value = "thinking";
+  startTimers();
   scrollDown();
+  const agent = agentMode.value === "on" ? true : null;
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ text, attachments: attachIds }));
+    ws.send(JSON.stringify({ text, attachments: attachIds, agent }));
     return;
   }
   try {
-    const r = await api.chat(text, attachIds);
+    const r = await api.chat(text, attachIds, agent);
     applyWs({ type: "message", content: r.content || r.deltas.join("") });
+    for (const a of r.artifacts || []) applyWs({ type: "artifact", ...a });
     applyWs({ type: "done" });
   } catch (e) {
     applyWs({ type: "error", error: e.message });
@@ -151,7 +222,10 @@ onMounted(() => {
   refresh();
   connect();
 });
-onBeforeUnmount(() => ws && ws.close());
+onBeforeUnmount(() => {
+  clearInterval(tickId);
+  ws && ws.close();
+});
 </script>
 
 <template>
@@ -163,7 +237,7 @@ onBeforeUnmount(() => ws && ws.close());
           :msg="{
             role: 'assistant',
             content:
-              'Connected. Send a message, attach files from the clip menu, or type `/help` for the command palette. Provider and model switch from the input bar.',
+              'Connected. Send a message, attach files from the clip menu, or type `/help` for the command palette. Ask it to create a file or a page and it runs the full agent with real tools on the server.',
           }"
         />
         <Message v-for="(m, i) in messages" :key="i" :msg="m" />
@@ -171,7 +245,14 @@ onBeforeUnmount(() => ws && ws.close());
     </div>
 
     <div class="composer-zone">
-      <StreamMonitor v-if="streamText" :text="streamText" />
+      <StreamMonitor
+        :active="busy"
+        :activity="activity"
+        :phase="phase"
+        :think-secs="thinkSecs"
+        :gen-secs="genSecs"
+        :text="streamText"
+      />
       <Composer
         :commands="commands"
         :busy="busy"
@@ -181,10 +262,12 @@ onBeforeUnmount(() => ws && ws.close());
         :active-model="status.model"
         :is-owner="isOwner"
         :history="sent"
+        :agent-mode="agentMode"
         @send="send"
         @stop="stop"
         @provider="pickProvider"
         @model="pickModel"
+        @agentmode="(m) => (agentMode = m)"
         @toast="(t) => emit('toast', t)"
       />
     </div>

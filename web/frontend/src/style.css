@@ -445,3 +445,62 @@ kbd {
   animation: rise .25s var(--ease);
 }
 @media (min-width: 961px) { .toast { bottom: 26px; } }
+
+/* -- ask 8: activity monitor internals, collapsible code, artifact preview -- */
+.stream .head .timers {
+  margin-left: auto;
+  display: flex;
+  gap: 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--t2);
+  font-variant-numeric: tabular-nums;
+}
+.stream .head .timers .dim { color: var(--t4); }
+.stream .win .ln.act {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  color: var(--t3);
+  font-size: 12px;
+}
+.stream .win .ln.act .icon { flex: none; opacity: 0.75; }
+.stream .win .ln.act.tool { color: var(--t2); }
+.stream .win .ln.act.verify { color: var(--acc); }
+
+.icon-btn.on { color: var(--acc); border-color: var(--acc); background: color-mix(in srgb, var(--acc) 10%, transparent); }
+
+.codeblock .bar .acts { margin-left: auto; display: flex; gap: 2px; }
+.codeblock .bar .acts button { display: inline-flex; align-items: center; gap: 4px; color: var(--t3); }
+.codeblock .bar .acts button:hover { color: var(--t1); }
+.codeblock.collapsed pre {
+  max-height: 8.5em;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, #000 55%, transparent);
+  mask-image: linear-gradient(180deg, #000 55%, transparent);
+}
+
+.artifact { margin: 10px 0 2px; border: 1px solid var(--line2); border-radius: var(--r-md); overflow: hidden; background: var(--bg0); }
+.artifact .abar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 12px;
+  border-bottom: 1px solid var(--line);
+  background: var(--bg1);
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--t3);
+}
+.artifact .abar .name { color: var(--t2); }
+.artifact .abar .live {
+  color: var(--acc);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  font-size: 9.5px;
+}
+.artifact .abar .grow { flex: 1; }
+.artifact .abar button { padding: 3px; background: transparent; color: var(--t3); display: inline-flex; }
+.artifact .abar button:hover { color: var(--t1); }
+.artifact .frame { display: block; width: 100%; height: 340px; border: 0; background: #fff; }
+@media (max-width: 640px) { .artifact .frame { height: 280px; } }
