@@ -72,6 +72,8 @@ def doctor_command(
     checks.extend(_project_checks(loaded))
     checks.extend(_browser_checks())
     checks.extend(_provider_checks(loaded))
+    checks.extend(_mcp_checks(loaded))
+    checks.extend(_vision_checks(loaded))
     if network:
         checks.extend(_credential_checks(loaded))
 
@@ -178,6 +180,108 @@ def _browser_checks() -> list[Check]:
     if available:
         installed, detail = browsers_installed()
         checks.append(Check("chromium binary", "ok" if installed else "warn", detail, fix="Run `ua doctor --install-browsers`", group="browser"))
+    return checks
+
+
+def _mcp_checks(loaded: object) -> list[Check]:
+    """MCP readiness: SDK present when servers are configured, runtimes on PATH.
+
+    Offline by design - actually connecting to servers is what ``ua mcp test``
+    is for. Doctor answers "could a connection even be attempted?".
+    """
+
+    settings = getattr(loaded, "settings")
+    servers = settings.mcp.servers
+    checks: list[Check] = []
+
+    from unknown_agent.mcp import mcp_available
+
+    available, why = mcp_available()
+    if not servers:
+        status = "ok" if available else "skip"
+        detail = "SDK installed, no servers configured" if available else "no servers configured (SDK not needed yet)"
+        checks.append(Check("mcp sdk", status, detail, fix="Browse the ecosystem: `ua mcp catalog`", group="mcp"))
+        return checks
+
+    checks.append(
+        Check(
+            "mcp sdk",
+            "ok" if available else "fail",
+            why if not available else f"SDK ready; {len(servers)} server(s) configured",
+            fix="pip install 'unknown-agent[mcp]'",
+            group="mcp",
+        )
+    )
+    enabled = {name: cfg for name, cfg in servers.items() if cfg.enabled}
+    disabled = len(servers) - len(enabled)
+    if disabled:
+        checks.append(Check("mcp servers", "ok", f"{len(enabled)} enabled, {disabled} disabled", group="mcp"))
+    for name, config in enabled.items():
+        if config.transport == "stdio":
+            command = (config.command or "").strip()
+            if not command:
+                checks.append(Check(f"mcp:{name}", "fail", "stdio server without a command", fix=f"ua mcp show {name}", group="mcp"))
+            elif find_executable(command) is None:
+                checks.append(
+                    Check(
+                        f"mcp:{name}", "warn",
+                        f"launcher {command!r} is not on PATH",
+                        fix="Install it (e.g. `pipx install uv` or Node.js for npx) or disable the server",
+                        group="mcp",
+                    )
+                )
+            else:
+                checks.append(Check(f"mcp:{name}", "ok", f"stdio via {command}", group="mcp"))
+        else:
+            has_url = bool((config.url or "").strip())
+            checks.append(
+                Check(
+                    f"mcp:{name}",
+                    "ok" if has_url else "fail",
+                    f"{config.transport} {config.url}" if has_url else f"{config.transport} server without a URL",
+                    fix="" if has_url else f"ua mcp show {name}",
+                    group="mcp",
+                )
+            )
+    checks.append(Check("mcp connectivity", "skip", "live probe not run here", fix="Run `ua mcp test` to connect", group="mcp"))
+    return checks
+
+
+def _vision_checks(loaded: object) -> list[Check]:
+    """Vision readiness: can *anything* in this config see, and is Pillow around?"""
+
+    settings = getattr(loaded, "settings")
+    if not settings.vision.enabled:
+        return [Check("vision", "skip", "disabled ([vision] enabled = false)", group="vision")]
+
+    checks: list[Check] = []
+    from unknown_agent.vision.service import VisionService, VisionUnavailable
+
+    try:
+        profile, is_fallback = VisionService(settings).route()
+        detail = f"fallback profile {profile!r}" if is_fallback else f"active profile {profile!r}"
+        checks.append(Check("vision routing", "ok", detail, group="vision"))
+    except VisionUnavailable as exc:
+        checks.append(
+            Check(
+                "vision routing", "warn", exc.message,
+                fix="Set [vision] fallback_profile to a multimodal profile, or pick a vision-capable model",
+                group="vision",
+            )
+        )
+
+    from unknown_agent.vision.images import pillow_available
+
+    if pillow_available():
+        checks.append(Check("pillow", "ok", "downscaling available for oversized screenshots", group="vision"))
+    else:
+        checks.append(
+            Check(
+                "pillow", "warn", "not installed - oversized images will be refused instead of downscaled",
+                fix="pip install 'unknown-agent[vision]'",
+                group="vision",
+            )
+        )
     return checks
 
 

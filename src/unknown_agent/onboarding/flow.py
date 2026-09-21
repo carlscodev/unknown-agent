@@ -19,6 +19,7 @@ from __future__ import annotations
 import asyncio
 import os
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Sequence
 
 from unknown_agent.config.credentials import CredentialStore, default_credentials_path
@@ -145,6 +146,10 @@ async def run_onboarding(
 
     # 7 - prove tool calling ------------------------------------------------
     _verify_tools(settings, profile_name, entry, interactive=interactive)
+
+    # 8 - capabilities: vision + MCP (optional, interactive only) -----------
+    if interactive:
+        _capabilities_step(runtime, settings, profile_name, model, prompter)
 
     if interactive:
         output.print(
@@ -467,10 +472,14 @@ def _persist(
         profile_values["api_key"] = credential_ref
     profile = ProviderConfig(**profile_values)
 
-    # Chosen model's real limits, when the provider told us.
+    # Chosen model's real limits and capabilities, when the provider told us.
+    # Persisting supports_vision here turns a heuristic guess into live-metadata
+    # truth for every later capability resolution.
     chosen = next((item for item in models if item.id == model), None)
     if chosen and chosen.context_window:
         profile.context_window = int(chosen.context_window)
+    if chosen and chosen.supports_vision:
+        profile.supports_vision = True
 
     settings.providers[profile_name] = profile
     settings.provider = profile_name
@@ -500,6 +509,48 @@ def _persist(
     )
     log.info("onboarding complete: profile=%s provider=%s model=%s", profile_name, entry.key, model)
     return result
+
+
+def _capabilities_step(runtime: Any, settings: Any, profile_name: str, model: str, prompter: Prompter) -> None:
+    """Tell the user what their model can see, and offer the MCP quick-start.
+
+    Deliberately zero-friction: one line of fact about vision (no question -
+    there is nothing to decide), one opt-in question about MCP. Declining
+    changes nothing; accepting writes the two safest catalog servers.
+    """
+
+    from unknown_agent.providers.capabilities import resolve_capabilities
+
+    caps = resolve_capabilities(settings.providers[profile_name], provider_name=profile_name)
+    if caps.supports_vision:
+        output.print(f"  [ua.ok]✓[/ua.ok] {model} accepts images - screenshot analysis and design comparison are live")
+    else:
+        output.print(
+            f"  [ua.muted]○ {model} is text-only - set \\[vision] fallback_profile to a multimodal "
+            "profile later to add sight ([cyan]ua vision status[/cyan] explains)[/ua.muted]"
+        )
+
+    if settings.mcp.servers:
+        return  # already configured; nothing to offer
+    if not _confirm(prompter, "Add the recommended MCP starter servers (filesystem, fetch)?", default=False):
+        output.print("  [ua.muted]○ skipped - browse the ecosystem anytime with [cyan]ua mcp catalog[/cyan][/ua.muted]")
+        return
+    try:
+        from unknown_agent.mcp.catalog import catalog_entry, config_from_entry
+
+        added = []
+        for entry_key in ("filesystem", "fetch"):
+            item = catalog_entry(entry_key)
+            if item is None:
+                continue
+            settings.mcp.servers[entry_key] = config_from_entry(item, project_root=str(getattr(runtime, "cwd", Path.cwd())))
+            added.append(entry_key)
+        writer = getattr(runtime, "save_settings", None)
+        if added and callable(writer):
+            writer(settings)
+            output.print(f"  [ua.ok]✓[/ua.ok] added {', '.join(added)} - verify with [cyan]ua mcp test[/cyan]")
+    except Exception as exc:  # noqa: BLE001 - optional step must never sink the setup
+        output.diag_print(f"note: could not add MCP starters ({exc}); use `ua mcp add` later")
 
 
 def _verify_tools(settings: Any, profile_name: str, entry: ProviderEntry, *, interactive: bool) -> None:
