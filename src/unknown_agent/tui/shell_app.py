@@ -823,6 +823,13 @@ class TUIAppShell(App[None]):
             body.append("\n")
             body.append(truncate(state.hint, 150), style=tokens.muted)
 
+        # When the provider is cooling down, say for how long.  "rate limited" with
+        # no timing is what made the old banner feel like a dead end.
+        waiting = state.cooldown_remaining or state.retry_after
+        if waiting and state.status in {ProviderStatus.RATE_LIMITED, ProviderStatus.TEMPORARILY_UNAVAILABLE}:
+            body.append("\n")
+            body.append(f"backing off — next automatic attempt in about {waiting:.0f}s", style=tokens.warning)
+
         keys = []
         if "switch provider" in state.remedies:
             keys.append("f3 provider")
@@ -838,10 +845,15 @@ class TUIAppShell(App[None]):
         notice.add_class("visible")
 
     def handle_degradation(self, error: BaseException, *, region: str, quiet: bool = False) -> None:
+        message = str(error)
         if isinstance(error, Exception):
-            self.provider_status.note_runtime_error(error)
+            state = self.provider_status.note_runtime_error(error)
+            # The transcript gets the classified explanation, not the provider's raw
+            # body.  The old line dumped a 429 payload straight into the conversation,
+            # which read as a crash rather than a recoverable condition.
+            message = state.message or message
         if not quiet:
-            self.note(f"{region}: {truncate(str(error), 140)}", tone="err")
+            self.note(f"{region}: {truncate(message, 140)}", tone="err")
         log.debug("degradation in %s", region, exc_info=True)
 
     def report_problem(self, region: str, error: BaseException) -> None:
@@ -1679,6 +1691,12 @@ class TUIAppShell(App[None]):
         try:
             with ErrorBoundary(self, region="agent run"):
                 result = await self._runner(task, self._hooks())
+                # The provider answered: lift any capacity cooldown and the warning
+                # banner, so a recovered provider stops looking broken.
+                try:
+                    self.provider_status.note_success()
+                except Exception:  # noqa: BLE001 - status bookkeeping must not break a run
+                    pass
                 self._record_usage(result)
                 # Close the live reasoning stream before the final answer so the
                 # rolling window doesn't overlap the styled output

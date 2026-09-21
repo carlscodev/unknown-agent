@@ -14,13 +14,16 @@ a failing provider is data, not an exception, because the UI must stay alive.
 
 from __future__ import annotations
 
+import asyncio
 import time
 from dataclasses import dataclass, field
 from typing import Any
 
 from unknown_agent.observability.logging import get_logger
+from unknown_agent.providers import resilience
 from unknown_agent.providers.auth import AuthConflict, AuthMode, cli_session_state, detect_auth_conflicts
 from unknown_agent.providers.discovery import ModelInfo, ProviderProbeError, fetch_models, validate_credential
+from unknown_agent.providers.resilience import FailureKind
 
 log = get_logger("providers.health")
 
@@ -30,6 +33,8 @@ __all__ = [
     "ProviderReport",
     "run_provider_check",
     "classify_provider_error",
+    "classify_provider_failure",
+    "KIND_TO_STATUS",
 ]
 
 
@@ -47,7 +52,8 @@ class ProviderStatus:
     LOGIN_REQUIRED = "login_required"    # subscription session expired / absent
     INVALID_CREDENTIALS = "invalid_credentials"
     CREDITS_EXHAUSTED = "credits_exhausted"   # HTTP 402 and friends
-    RATE_LIMITED = "rate_limited"
+    RATE_LIMITED = "rate_limited"        # *we* sent too much: back off
+    TEMPORARILY_UNAVAILABLE = "temporarily_unavailable"  # *their* upstream is empty
     DEGRADED = "degraded"                # partially working
     OFFLINE = "offline"                  # network/endpoint unreachable
     AUTH_CONFLICT = "auth_conflict"
@@ -64,6 +70,7 @@ class ProviderStatus:
         INVALID_CREDENTIALS: ("invalid credentials", "error"),
         CREDITS_EXHAUSTED: ("credits exhausted", "error"),
         RATE_LIMITED: ("rate limited", "warning"),
+        TEMPORARILY_UNAVAILABLE: ("temporarily unavailable", "warning"),
         DEGRADED: ("degraded", "warning"),
         OFFLINE: ("offline", "error"),
         AUTH_CONFLICT: ("auth conflict", "warning"),
@@ -71,6 +78,11 @@ class ProviderStatus:
     }
 
     #: Statuses where the product still works, just not through this provider.
+    #:
+    #: ``RATE_LIMITED`` and ``TEMPORARILY_UNAVAILABLE`` are deliberately *absent*:
+    #: both are transient, so the shell must stay usable and the user must be able
+    #: to switch model/provider or wait out the cooldown.  Locking the UI on a
+    #: provider's temporary capacity problem is the bug this module exists to fix.
     BLOCKING = frozenset({NOT_CONFIGURED, SETUP_REQUIRED, INVALID_CREDENTIALS, LOGIN_REQUIRED, CREDITS_EXHAUSTED, OFFLINE})
 
     @classmethod
@@ -89,46 +101,53 @@ REMEDIES: dict[str, tuple[str, ...]] = {
     ProviderStatus.LOGIN_REQUIRED: ("sign in", "switch auth mode", "switch provider"),
     ProviderStatus.INVALID_CREDENTIALS: ("re-enter credentials", "switch auth mode", "switch provider"),
     ProviderStatus.CREDITS_EXHAUSTED: ("switch provider", "switch model", "top up the account"),
-    ProviderStatus.RATE_LIMITED: ("retry", "switch model"),
+    ProviderStatus.RATE_LIMITED: ("wait for cooldown", "retry", "switch model", "switch provider"),
+    ProviderStatus.TEMPORARILY_UNAVAILABLE: ("wait for cooldown", "switch provider", "switch model", "retry"),
     ProviderStatus.OFFLINE: ("retry", "continue offline"),
     ProviderStatus.AUTH_CONFLICT: ("resolve conflict", "switch auth mode"),
     ProviderStatus.DEGRADED: ("retry", "switch model", "continue anyway"),
 }
 
 
+#: ``resilience.FailureKind`` → the status vocabulary the UI renders.
+#:
+#: This is the only place the two vocabularies meet, so the sidebar and the
+#: transcript can no longer disagree about the same failure.
+KIND_TO_STATUS: dict[str, str] = {
+    FailureKind.OK: ProviderStatus.CONNECTED,
+    FailureKind.INVALID_CREDENTIALS: ProviderStatus.INVALID_CREDENTIALS,
+    FailureKind.CREDITS_EXHAUSTED: ProviderStatus.CREDITS_EXHAUSTED,
+    FailureKind.RATE_LIMITED: ProviderStatus.RATE_LIMITED,
+    FailureKind.NO_CAPACITY: ProviderStatus.TEMPORARILY_UNAVAILABLE,
+    FailureKind.TEMPORARILY_UNAVAILABLE: ProviderStatus.TEMPORARILY_UNAVAILABLE,
+    FailureKind.INCOMPATIBLE_API: ProviderStatus.DEGRADED,
+    FailureKind.NOT_FOUND: ProviderStatus.DEGRADED,
+    FailureKind.CONTEXT_LENGTH: ProviderStatus.DEGRADED,
+    FailureKind.TIMEOUT: ProviderStatus.OFFLINE,
+    FailureKind.OFFLINE: ProviderStatus.OFFLINE,
+    FailureKind.UNKNOWN: ProviderStatus.DEGRADED,
+}
+
+
 def classify_provider_error(error: Exception | str, *, status_code: int | None = None) -> str:
     """Map a provider failure onto a :class:`ProviderStatus`.
 
-    HTTP 402 is the case that motivated this module: it means "your account cannot pay
-    for this", which is a *provider account* state.  It must never read as a broken
-    installation, and it must never stop the UI.
+    Thin adapter over :func:`unknown_agent.providers.resilience.classify`, kept at
+    this signature because the whole TUI already calls it.  The important part is
+    what it no longer does: it used to scan the text for the literal ``"rate limit"``,
+    so unli.dev's ``provider_account_unavailable`` capacity error was either dumped
+    raw or mislabelled.  The shared classifier reads the status code and the
+    provider's own machine code first.
     """
 
-    text = str(error)
-    lowered = text.lower()
-    code = status_code
-    if code is None:
-        code = getattr(error, "status_code", None) or getattr(error, "status", None)
-    if code is None:
-        for candidate in (401, 402, 403, 404, 429, 500, 502, 503):
-            if str(candidate) in lowered:
-                code = candidate
-                break
+    failure = resilience.classify(error, status_code=status_code)
+    return KIND_TO_STATUS.get(failure.kind, ProviderStatus.DEGRADED)
 
-    if code == 402 or any(
-        marker in lowered
-        for marker in ("insufficient credit", "insufficient_quota", "out of credit", "payment required", "billing", "quota exceeded")
-    ):
-        return ProviderStatus.CREDITS_EXHAUSTED
-    if code in {401, 403} or any(marker in lowered for marker in ("invalid api key", "unauthorized", "authentication")):
-        return ProviderStatus.INVALID_CREDENTIALS
-    if code == 429 or "rate limit" in lowered:
-        return ProviderStatus.RATE_LIMITED
-    if any(marker in lowered for marker in ("connect", "timed out", "timeout", "unreachable", "name resolution", "network")):
-        return ProviderStatus.OFFLINE
-    if code == 404 or "not found" in lowered:
-        return ProviderStatus.DEGRADED
-    return ProviderStatus.DEGRADED
+
+def classify_provider_failure(error: Exception | str, *, status_code: int | None = None) -> resilience.Failure:
+    """The full classified failure, for callers that need the hint and the timing."""
+
+    return resilience.classify(error, status_code=status_code)
 
 
 # --------------------------------------------------------------------------- #
@@ -266,7 +285,11 @@ async def run_provider_check(
     # -- 2. session or credential ------------------------------------------ #
     started = time.monotonic()
     if mode.kind == "subscription":
-        state, detail = cli_session_state(mode)
+        # ``cli_session_state`` shells out with an 8s timeout.  This function is
+        # awaited on the Textual event loop, so calling it directly froze the whole
+        # UI for the duration — the "setup hangs after a few seconds" bug.  It is
+        # blocking by nature (a subprocess), so it belongs on a worker thread.
+        state, detail = await asyncio.to_thread(cli_session_state, mode)
         elapsed = int((time.monotonic() - started) * 1000)
         if state == "ok":
             report.stages.append(CheckStage("subscription session", "ok", detail, elapsed_ms=elapsed))
@@ -481,6 +504,10 @@ def _hint_for(status: str, provider_label: str) -> str:
         ),
         ProviderStatus.INVALID_CREDENTIALS: "Re-enter the credential in `ua setup`, or switch auth mode.",
         ProviderStatus.LOGIN_REQUIRED: "Sign in again from the setup panel.",
-        ProviderStatus.RATE_LIMITED: "Wait a moment and retry, or switch to a less contended model.",
+        ProviderStatus.RATE_LIMITED: "We are sending too much for this key. The app is backing off automatically; you can also switch to a less contended model.",
+        ProviderStatus.TEMPORARILY_UNAVAILABLE: (
+            f"{provider_label}'s upstream has no free capacity right now. Your key is fine — "
+            "wait for the cooldown, switch provider (f3), or switch model (f2)."
+        ),
         ProviderStatus.OFFLINE: "Check the network or the endpoint URL, then retry.",
     }.get(status, "Open `ua setup` to reconfigure, or switch provider from the TUI.")

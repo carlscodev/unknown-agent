@@ -24,6 +24,7 @@ import httpx
 from unknown_agent.config.secrets import REDACTOR, looks_like_credential
 from unknown_agent.errors import ConfigError, ProviderError
 from unknown_agent.observability.logging import get_logger
+from unknown_agent.providers import resilience
 from unknown_agent.providers.catalog import ProviderEntry, known_model_ids
 from unknown_agent.providers.compatibility import normalize_compatibility
 
@@ -346,18 +347,49 @@ async def _fetch_models_once(
         return [ModelInfo(id=model_id, name=model_id, provider=entry.key) for model_id in known_model_ids(entry)]
 
     eff_entry = effective_entry_for_compatibility(entry, compatibility)
-    client = _safe_build_client(eff_entry, api_key=api_key, base_url=base_url, timeout=timeout, compatibility=compatibility)
-    try:
-        response = await client.get(_listing_url(eff_entry))
-        _raise_for_status(eff_entry, response)
-        payload = response.json()
-    except httpx.HTTPError as exc:  # network-level failure
-        raise ProviderProbeError(
-            f"Could not reach {eff_entry.label}: {type(exc).__name__}: {exc}",
-            hint="Check your network connection, proxy settings, or run the provider locally.",
-        ) from exc
-    finally:
-        await client.aclose()
+
+    # A gateway with no free capacity answers a model listing with the same 429 it
+    # answers a completion with.  One bounded retry is worth it — capacity blips are
+    # usually seconds — but this is the *setup* path, so the policy is short: a user
+    # staring at a panel must get an answer, not a 20s silence.
+    policy = resilience.SETUP_POLICY
+    attempt = 0
+    while True:
+        attempt += 1
+        client = _safe_build_client(
+            eff_entry, api_key=api_key, base_url=base_url, timeout=timeout, compatibility=compatibility
+        )
+        try:
+            response = await client.get(_listing_url(eff_entry))
+            _raise_for_status(eff_entry, response)
+            payload = response.json()
+        except ProviderProbeError as exc:
+            failure = resilience.classify(exc, provider=eff_entry.label)
+            if failure.retryable and attempt <= policy.max_retries:
+                delay = policy.delay(attempt, failure)
+                log.info(
+                    "model listing from %s failed (%s); retrying in %.1fs (attempt %d/%d)",
+                    eff_entry.label,
+                    failure.kind,
+                    delay,
+                    attempt,
+                    policy.attempts(),
+                )
+                await asyncio.sleep(delay)
+                continue
+            raise
+        except httpx.HTTPError as exc:  # network-level failure
+            failure = resilience.classify(exc, provider=eff_entry.label)
+            if failure.retryable and attempt <= policy.max_retries:
+                await asyncio.sleep(policy.delay(attempt, failure))
+                continue
+            raise ProviderProbeError(
+                f"Could not reach {eff_entry.label}: {type(exc).__name__}: {exc}",
+                hint="Check your network connection, proxy settings, or run the provider locally.",
+            ) from exc
+        finally:
+            await client.aclose()
+        break
 
     parser = _PARSERS.get(eff_entry.model_listing, _parse_openai_style)
     models = parser(eff_entry, payload if isinstance(payload, dict) else {})
@@ -570,36 +602,35 @@ async def _probe_completion(entry: ProviderEntry, *, api_key: str | None, base_u
 
 
 def _raise_for_status(entry: ProviderEntry, response: httpx.Response) -> None:
-    """Turn an HTTP failure into a provider error a human can act on."""
+    """Turn an HTTP failure into a provider error a human can act on.
+
+    The classified failure is attached to the exception (``status_code``,
+    ``retry_after``, ``kind``) so callers can make a real decision instead of
+    re-parsing prose.  This is what was missing when a setup 429 reached the panel:
+    the panel could not tell "wait and retry" from "your key is wrong".
+    """
 
     if response.status_code < 400:
         return
     body = _short_body(response)
-    status = response.status_code
-    if status == 401:
-        raise ProviderProbeError(
-            f"{entry.label} rejected the API key (401 Unauthorized).",
-            hint=f"Re-enter the key with `ua setup`, or check {entry.env_var} for typos or trailing spaces.",
-        )
-    if status == 403:
-        raise ProviderProbeError(
-            f"{entry.label} refused the request (403 Forbidden).",
-            hint="The key may lack the required scope, or your account is not enabled for this model.",
-        )
-    if status == 404:
-        raise ProviderProbeError(
-            f"{entry.label} returned 404 for {response.request.url.path}.",
-            hint="Check the base URL (some vendors need a region or account prefix) and the model id.",
-        )
-    if status == 429:
-        retry_after = response.headers.get("retry-after", "")
-        raise ProviderProbeError(
-            f"{entry.label} rate-limited the request (429).",
-            hint=f"Wait {retry_after or 'a few seconds'} and retry, or use a different model.",
-        )
-    if status >= 500:
-        raise ProviderProbeError(f"{entry.label} is having trouble (HTTP {status}).", hint="Retry shortly; this is upstream.")
-    raise ProviderProbeError(f"{entry.label} returned HTTP {status}: {body[:200]}", hint="Check the key, base URL and model id.")
+    failure = resilience.classify(
+        f"HTTP {response.status_code}: {body[:300]}",
+        status_code=response.status_code,
+        headers=response.headers,
+        provider=entry.label,
+    )
+    # Keep the endpoint-specific hints that used to live here: they name the exact
+    # thing to fix, which the generic taxonomy cannot know.
+    hint = failure.hint
+    if response.status_code == 401:
+        hint = f"Re-enter the key with `ua setup`, or check {entry.env_var} for typos or trailing spaces."
+    elif response.status_code == 404:
+        hint = "Check the base URL (some vendors need a region or account prefix) and the model id."
+    error = ProviderProbeError(failure.summary(), hint=hint, context=failure.to_dict())
+    error.status_code = response.status_code
+    error.retry_after = failure.retry_after
+    error.kind = failure.kind
+    raise error
 
 
 def _short_body(response: httpx.Response) -> str:

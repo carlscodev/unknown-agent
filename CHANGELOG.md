@@ -6,6 +6,95 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.7] - 2026-09-21
+
+### Fixed — `/setup` froze on saturated gateways, and HTTP 429 was misread
+
+Triggered by a real failure against `api.unli.dev`, which answers capacity problems
+with `HTTP 429` and the body
+`{"error":{"code":"provider_account_unavailable","message":"所有回退分组均不可用:No provider capacity right now; retry."}}`.
+Three separate defects made that unrecoverable; each is fixed and pinned by a test.
+
+**1) The setup panel froze (root cause: blocking subprocess on the UI thread)**
+
+- `AuthModeScreen._describe` ran on the Textual event loop and called
+  `cli_session_state()`, which shells out to the provider's CLI with an **8 second
+  timeout**. Highlighting a subscription mode therefore stopped the whole app from
+  painting or reading input. It now renders local state immediately and resolves the
+  session in `_probe_session`, an `@work(exclusive=True)` worker using
+  `asyncio.to_thread`; a newer highlight cancels the previous probe.
+- `providers.health.run_provider_check` made the same blocking call from inside an
+  `async def`. It now goes through `asyncio.to_thread`.
+- `ApiKeyScreen` disabled every button *and* the input field with no timeout and no
+  cancel, so a gateway that stalled left a dead dialog. Validation and model listing
+  are now bounded (`SETUP_VALIDATE_TIMEOUT_S` 25 s, `SETUP_MODELS_TIMEOUT_S` 20 s),
+  there is a **cancel** button plus `ctrl+x`, and `Esc` now aborts the in-flight
+  request instead of doing nothing.
+
+**2) HTTP 429 was never recognised (root cause: status flattened into the message)**
+
+- `providers.toolkit.normalise_provider_error` read `error.status_code` — which the
+  HTTP layer never sets, because it had already formatted the status into the string
+  `"HTTP 429: ..."` — and matched the literal substring `"rate limit"`, which this
+  body does not contain. The failure fell through to the generic catch-all, so the
+  user saw a raw Chinese JSON body plus *"Re-run with --debug"*.
+- New module **`providers/resilience.py`** is now the single classifier:
+  `extract_http_status` recovers the code from attributes, `HTTP <code>` labels, or
+  an unambiguous bare token; `classify` returns a `Failure` with `kind`, `retryable`,
+  `retry_after` and `provider_code`. `toolkit.normalise_provider_error` and
+  `health.classify_provider_error` both delegate to it, so the CLI, the agent loop
+  and the sidebar can no longer describe one failure three different ways.
+
+**3) `provider_account_unavailable` is now its own condition, not "bad key" or "rate limit"**
+
+- New `FailureKind.NO_CAPACITY`, distinct from `RATE_LIMITED` (we sent too much) and
+  from `INVALID_CREDENTIALS`. Detected by machine code (`provider_account_unavailable`,
+  `no_available_provider`, `overloaded`, …) and by prose. Mapped to the new
+  `ProviderStatus.TEMPORARILY_UNAVAILABLE`, which is deliberately **not** in
+  `ProviderStatus.BLOCKING` — a provider outage must never lock the shell.
+- Remedies and hints now name the recovery: wait for the cooldown, `f3` switch
+  provider, `f2` switch model, `ctrl+r` retry. The sidebar also prints
+  `backing off — next automatic attempt in about Ns`.
+
+**4) Retry is bounded, jittered, and honours `Retry-After`**
+
+- `RetryPolicy` + `backoff_delay`: capped exponential (`0.8·2ⁿ`, max 20 s) with ±25 %
+  jitter, or `Retry-After` when the provider sends one — parsed as delta-seconds
+  *or* HTTP-date, and clamped to `max_retry_after` so a broken header cannot stall a
+  session. Terminal failures (401/402/404/context) never retry.
+- `OpenAICompatibleProvider.stream` had **no retry path at all**; it now retries
+  reaching the stream (never replaying bytes already yielded).
+- A bug found while testing: `Retry-After` was silently dropped because the reader
+  used `isinstance(source, dict)` and `httpx.Headers` is a `Mapping`, not a `dict`.
+
+**5) No more hammering a saturated upstream**
+
+- New `CooldownState` (process-global `resilience.cooldown`) keyed by
+  `provider:model`. A transient failure trips it; while it is active the adapter
+  fails fast with *"cooling down … retry in about Ns"* instead of re-sending the same
+  four requests. A successful request, or a terminal one, clears it, and
+  `ProviderStatusController.note_success()` lifts the UI banner with it.
+
+**6) An unreachable provider no longer destroys setup**
+
+- A capacity failure during validation offers **save anyway (unverified)** and
+  **switch provider**. Saving marks `models_source = "unverified"`, the review screen
+  shows `provider state: degraded / unverified`, and the model screen falls back to
+  manual entry with a line saying the list could not be verified.
+
+### Added
+
+- `providers/resilience.py` — `FailureKind`, `Failure`, `classify`, `RetryPolicy`,
+  `backoff_delay`, `parse_retry_after`, `extract_http_status`, `retry_async`,
+  `CooldownState`.
+- `ProviderStatus.TEMPORARILY_UNAVAILABLE`, `health.KIND_TO_STATUS`,
+  `health.classify_provider_failure`, `ProviderStatusController.note_success`.
+- `tests/test_provider_resilience.py` — 35 tests: classification of the real payload,
+  backoff/jitter/`Retry-After`, cooldown, the adapter against a mock gateway that
+  behaves exactly like unli.dev, an event-loop heartbeat proving `/setup` no longer
+  blocks, and the real Textual panel driven headlessly (cancel, timeout, save-anyway,
+  responsive during the session probe).
+
 ## [1.1.6] - 2026-09-21
 
 ### Fixed — Build artifacts were dumped as raw chat; streaming & code were unreadable on narrow

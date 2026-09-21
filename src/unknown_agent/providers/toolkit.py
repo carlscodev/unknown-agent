@@ -25,7 +25,9 @@ from typing import Any
 
 from unknown_agent.core.models import Message, ToolCall
 from unknown_agent.errors import ProviderError
+from unknown_agent.providers import resilience
 from unknown_agent.providers.base import ModelProvider, ToolSchema
+from unknown_agent.providers.resilience import FailureKind
 
 # --------------------------------------------------------------------------- #
 # translation
@@ -160,51 +162,75 @@ def capability_report(profile: Any, entry: Any = None) -> dict[str, Any]:
 
 
 def normalise_provider_error(error: Exception, *, provider: str, model: str = "") -> ProviderError:
-    """Map any provider failure onto one taxonomy with actionable hints."""
+    """Map any provider failure onto one taxonomy with actionable hints.
 
-    text = str(error)
-    lowered = text.lower()
-    status = getattr(error, "status_code", None) or getattr(error, "status", None)
+    Delegates to :mod:`unknown_agent.providers.resilience` so the CLI, the agent
+    loop and the TUI describe the same failure identically.
+
+    This used to be a private copy of the classifier, and the copy is what broke:
+    it read ``error.status_code`` — which the HTTP layer never sets, because the
+    status was already flattened into the message as ``"HTTP 429: ..."`` — and it
+    matched the literal substring ``"rate limit"``, which unli.dev does not send.
+    Its capacity error therefore fell all the way through to
+    ``"{provider} failed: <raw JSON>"`` with the hint "Re-run with --debug",
+    and the user saw a Chinese error body with no way to act on it.
+
+    The tool-capability branch stays here: it is about *our* request shape rather
+    than a provider state, and the shared taxonomy has no kind for it.
+    """
 
     if isinstance(error, ProviderError):
         return error
 
-    if status == 401 or "invalid api key" in lowered or "unauthorized" in lowered:
+    failure = resilience.classify(error, provider=provider, model=model)
+
+    # Tool-shape mismatch: "you asked for tools this model cannot take".
+    lowered = str(error).lower()
+    if failure.kind == FailureKind.UNKNOWN and "tool" in lowered and (
+        "support" in lowered or "unknown" in lowered or "not allowed" in lowered
+    ):
         return ProviderError(
-            f"{provider} rejected the credentials.",
-            hint="Run `ua setup` to re-enter the key, or check the environment variable it references.",
-        )
-    if status == 402 or "insufficient" in lowered or "credit" in lowered or "quota" in lowered:
-        return ProviderError(
-            f"{provider} says the account is out of credit for {model or 'this model'}.",
-            hint="Top up the account, or switch model/provider with `ua models use` / `ua providers use`.",
-        )
-    if status == 404 or "model not found" in lowered or "does not exist" in lowered:
-        return ProviderError(
-            f"{provider} does not know the model {model or '(unset)'!r}.",
-            hint="Run `ua models list` to see what this key can actually call.",
-        )
-    if status == 429 or "rate limit" in lowered:
-        return ProviderError(
-            f"{provider} rate-limited the request.",
-            hint="Retry in a moment; `agent.max_retries` controls automatic backoff.",
-        )
-    if "context length" in lowered or "too many tokens" in lowered or "maximum context" in lowered:
-        return ProviderError(
-            f"The conversation exceeds {model or 'the model'}'s context window.",
-            hint="Lower agent.context_token_budget, or switch to a model with a larger window.",
-        )
-    if "tool" in lowered and ("support" in lowered or "unknown" in lowered):
-        return ProviderError(
-            f"{provider} cannot call tools the way this task needs ({text[:160]}).",
+            f"{provider} cannot call tools the way this task needs ({failure.summary()}).",
             hint="Pick a tool-capable model (`ua models list --tools`) or an OpenAI-compatible provider.",
         )
-    if isinstance(error, TimeoutError) or "timed out" in lowered or "timeout" in lowered:
-        return ProviderError(
-            f"{provider} timed out.",
-            hint="Increase providers.<name>.request_timeout_s or retry; local models may simply be slow.",
+
+    hint = _hint_for_kind(failure, provider=provider)
+    return ProviderError(
+        failure.summary(),
+        hint=hint,
+        context={
+            "kind": failure.kind,
+            "status": failure.status_code,
+            "retryable": failure.retryable,
+            "retry_after": failure.retry_after,
+            "provider_code": failure.provider_code,
+        },
+    )
+
+
+def _hint_for_kind(failure: resilience.Failure, *, provider: str) -> str:
+    """Prefer the shared hint; keep the product-specific commands for the CLI."""
+
+    product_hints = {
+        FailureKind.INVALID_CREDENTIALS: "Run `ua setup` to re-enter the key, or check the environment variable it references.",
+        FailureKind.CREDITS_EXHAUSTED: "Top up the account, or switch model/provider with `ua models use` / `ua providers use`.",
+        FailureKind.NOT_FOUND: "Run `ua models list` to see what this key can actually call.",
+        FailureKind.CONTEXT_LENGTH: "Lower agent.context_token_budget, or switch to a model with a larger window.",
+        FailureKind.TIMEOUT: "Increase providers.<name>.request_timeout_s or retry; local models may simply be slow.",
+        FailureKind.INCOMPATIBLE_API: "Re-run `ua setup` and pick compatibility `anthropic` or `auto`.",
+    }
+    if failure.kind in product_hints:
+        return product_hints[failure.kind]
+    if failure.kind == FailureKind.NO_CAPACITY:
+        wait = f" Waiting about {failure.retry_after:.0f}s before the next attempt." if failure.retry_after else ""
+        return (
+            f"{provider}'s upstream is out of capacity — your credentials are fine.{wait} "
+            "Automatic retry is bounded and backed off; switch provider with `ua providers use` if it persists."
         )
-    return ProviderError(f"{provider} failed: {text[:300]}", hint="Re-run with --debug for the full response.")
+    if failure.kind == FailureKind.RATE_LIMITED:
+        wait = f" Retry in about {failure.retry_after:.0f}s." if failure.retry_after else ""
+        return f"Backoff is automatic and bounded; `agent.max_retries` controls it.{wait}"
+    return failure.hint or "Re-run with --debug for the full response."
 
 
 def _loads(raw: Any) -> dict[str, Any]:

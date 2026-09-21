@@ -25,6 +25,7 @@ the secret only ever travels from the masked input to the 0600 credential store.
 
 from __future__ import annotations
 
+import asyncio
 import os
 from dataclasses import dataclass, field
 from typing import Any, Sequence
@@ -52,6 +53,7 @@ from unknown_agent.providers.discovery import (
     fetch_models,
     validate_credential,
 )
+from unknown_agent.providers import resilience
 from unknown_agent.providers.auth import AuthMode, auth_modes_for, cli_session_state, detect_auth_conflicts
 from unknown_agent.providers.compatibility import (
     COMPATIBILITY_DESCRIPTIONS,
@@ -63,6 +65,16 @@ from unknown_agent.tui.themes import apply_to_app
 from unknown_agent.tui.widgets import format_context, format_cost, rank_models
 
 log = get_logger("tui.quicksetup")
+
+#: How long a credential check may take before the panel gives up and says so.
+#:
+#: Without this the panel waited on the gateway forever: ``_set_busy(True)`` had
+#: already disabled every button and the input field, so a provider that stalled
+#: (unli.dev under no capacity) left the user with a frozen dialog and no way out.
+SETUP_VALIDATE_TIMEOUT_S = 25.0
+
+#: Model listing gets its own, shorter budget: it is a convenience, not a gate.
+SETUP_MODELS_TIMEOUT_S = 20.0
 
 
 async def _compat_call(coro_factory):  # type: ignore[no-untyped-def]
@@ -467,6 +479,7 @@ class ApiKeyScreen(ModalScreen[None]):
 
     BINDINGS = [
         Binding("escape", "back", "Back"),
+        Binding("ctrl+x", "cancel_validation", "Cancel", show=False),
         Binding("ctrl+c", "quit_setup", "Quit", show=False),
     ]
 
@@ -481,6 +494,9 @@ class ApiKeyScreen(ModalScreen[None]):
     #key-field { margin-bottom: 1; }
     #key-status { height: auto; min-height: 2; margin-bottom: 1; }
     #key-buttons Button { margin-right: 1; }
+    #key-recovery { display: none; height: auto; margin-top: 1; }
+    #key-recovery.visible { display: block; }
+    #key-recovery Button { margin-right: 1; }
     #key-busy { height: 1; display: none; }
     #key-busy.active { display: block; }
     """
@@ -489,6 +505,8 @@ class ApiKeyScreen(ModalScreen[None]):
         super().__init__()
         self.setup = setup_app
         self.busy = False
+        #: Set when the provider was unreachable/overloaded: the key is unproven.
+        self._pending_unverified: dict[str, Any] | None = None
 
     @property
     def entry(self) -> ProviderEntry:
@@ -519,6 +537,15 @@ class ApiKeyScreen(ModalScreen[None]):
                 if env_value:
                     yield Button(f"use ${entry.env_var}", id="key-env", variant="success")
                 yield Button("back", id="key-back")
+                # Enabled only while a request is in flight: the escape hatch that
+                # was missing when a slow gateway made this panel unkillable.
+                yield Button("cancel", id="key-cancel", variant="error", disabled=True)
+            # Revealed only when the provider could not be *reached* to validate:
+            # an unproven key is not a wrong key, and locking the user out of their
+            # own config because a gateway was saturated is not acceptable.
+            with Horizontal(id="key-recovery"):
+                yield Button("save anyway (unverified)", id="key-save-anyway", variant="warning")
+                yield Button("switch provider", id="key-switch", variant="default")
 
     def on_mount(self) -> None:
         self.query_one("#key-field", Input).focus()
@@ -531,8 +558,45 @@ class ApiKeyScreen(ModalScreen[None]):
         self.busy = busy
         self.query_one("#key-busy", LoadingIndicator).set_class(busy, "active")
         for button in self.query(Button):
+            if button.id in {"key-save-anyway", "key-switch"}:
+                continue  # recovery buttons have their own visibility rules
+            if button.id == "key-cancel":
+                # Inverted: the cancel button exists *for* the busy state.
+                button.disabled = not busy
+                continue
             button.disabled = busy
         self.query_one("#key-field", Input).disabled = busy
+        if busy:
+            # A new attempt invalidates any previous "save anyway" offer.
+            self._pending_unverified = None
+            self.query_one("#key-recovery", Horizontal).remove_class("visible")
+
+    # -- escape hatch ------------------------------------------------------ #
+    def _cancel_validation(self) -> None:
+        """Abort an in-flight validation.
+
+        A gateway that never answers must not turn this panel into a dead end.
+        Cancelling the worker releases the UI immediately; nothing is saved.
+        """
+
+        if not self.busy:
+            return
+        try:
+            self.workers.cancel_group(self, "setup-validate")
+        except Exception:  # noqa: BLE001 - cancelling must never raise into the UI
+            log.debug("could not cancel the validation worker", exc_info=True)
+        self._set_busy(False)
+        self._status("[yellow]⊘ cancelled — nothing was sent or saved.[/] Edit the key and press Enter to try again.")
+        field = self.query_one("#key-field", Input)
+        field.disabled = False
+        field.focus()
+
+    @on(Button.Pressed, "#key-cancel")
+    def _cancel_pressed(self, event: Button.Pressed) -> None:
+        self._cancel_validation()
+
+    def action_cancel_validation(self) -> None:
+        self._cancel_validation()
 
     # -- events ------------------------------------------------------------ #
     @on(Input.Submitted, "#key-field")
@@ -557,8 +621,12 @@ class ApiKeyScreen(ModalScreen[None]):
         self.action_back()
 
     def action_back(self) -> None:
-        if not self.busy:
-            self.setup.back_to_providers()
+        # Escape used to do nothing while a request was in flight, which turned a
+        # slow provider into a trap.  First Esc cancels the request, second goes back.
+        if self.busy:
+            self._cancel_validation()
+            return
+        self.setup.back_to_providers()
 
     def action_quit_setup(self) -> None:
         self.setup.cancel()
@@ -581,22 +649,53 @@ class ApiKeyScreen(ModalScreen[None]):
         self._set_busy(True)
         self._validate_and_fetch(key)
 
-    @work(exclusive=True)
+    @work(exclusive=True, group="setup-validate")
     async def _validate_and_fetch(self, key: str) -> None:
         entry = self.entry
         base_url = self.setup.base_url or None
         compat = getattr(self.setup, "compatibility", "openai") or "openai"
         try:
-            result = await _safe_validate_credential(entry, api_key=key or None, base_url=base_url, compatibility=compat)
+            result = await asyncio.wait_for(
+                _safe_validate_credential(entry, api_key=key or None, base_url=base_url, compatibility=compat),
+                timeout=SETUP_VALIDATE_TIMEOUT_S,
+            )
+        except asyncio.CancelledError:
+            # ``_cancel_validation`` already restored the UI; do not touch it again.
+            raise
+        except TimeoutError:
+            self._fail(
+                f"{entry.label} did not answer within {SETUP_VALIDATE_TIMEOUT_S:.0f}s.",
+                "The endpoint may be overloaded or unreachable. Press Enter to retry, "
+                "or Esc to go back and pick another provider.",
+            )
+            return
         except Exception as exc:  # noqa: BLE001 - never show a traceback to a user
-            self._fail("Could not reach the provider.", f"{type(exc).__name__}: {exc}")
+            failure = resilience.classify(exc, provider=getattr(entry, "label", "the provider"))
+            self._fail(failure.summary(), failure.hint or f"{type(exc).__name__}: {exc}")
             return
         if not result.ok:
-            # Provide compatibility-aware hint: if the endpoint rejected an
-            # OpenAI-shaped request but speaks Anthropic, suggest switching.
-            hint = result.hint or "Copy the key again from the provider dashboard and retry."
+            # Classify so a capacity/429 answer is not reported as a bad key.
+            failure = resilience.classify(
+                result.message,
+                status_code=getattr(result, "status_code", None),
+                provider=getattr(entry, "label", "the provider"),
+            )
+            hint = failure.hint or result.hint or "Copy the key again from the provider dashboard and retry."
+            # Compatibility-aware hint: an endpoint that rejects an OpenAI-shaped
+            # request but speaks Anthropic should say so.
             if compat == "openai" and "404" in result.message:
                 hint = hint + " If this endpoint uses Anthropic Messages, switch compatibility to anthropic or auto-detect."
+            if failure.kind == resilience.FailureKind.NO_CAPACITY:
+                # The key was never proven wrong — the gateway had no capacity.  Offer
+                # to save anyway so the user is not locked out of their own config.
+                self._fail_transient(
+                    failure.summary(),
+                    hint,
+                    key=key,
+                    base_url=base_url,
+                    compat=compat,
+                )
+                return
             self._fail(result.message, hint)
             return
 
@@ -604,7 +703,19 @@ class ApiKeyScreen(ModalScreen[None]):
         models: list[ModelInfo] = []
         source = "live"
         try:
-            models = list(await _safe_fetch_models(entry, api_key=key or None, base_url=base_url, compatibility=compat))
+            models = list(
+                await asyncio.wait_for(
+                    _safe_fetch_models(entry, api_key=key or None, base_url=base_url, compatibility=compat),
+                    timeout=SETUP_MODELS_TIMEOUT_S,
+                )
+            )
+        except (TimeoutError, asyncio.CancelledError) as exc:
+            # A saturated gateway usually accepts the key and then cannot list models.
+            # That is a listing problem, not a setup failure: fall through to the
+            # manual/catalog path instead of stranding the user here.
+            if isinstance(exc, asyncio.CancelledError):
+                raise
+            log.info("model listing timed out after %.0fs; falling back to manual entry", SETUP_MODELS_TIMEOUT_S)
         except ProviderProbeError as exc:
             log.debug("model listing failed: %s", exc)
         except Exception as exc:  # noqa: BLE001
@@ -640,6 +751,71 @@ class ApiKeyScreen(ModalScreen[None]):
         field = self.query_one("#key-field", Input)
         field.disabled = False
         field.focus()
+
+    def _fail_transient(
+        self,
+        message: str,
+        hint: str,
+        *,
+        key: str,
+        base_url: str | None,
+        compat: str,
+    ) -> None:
+        """The provider had no capacity, so the key was never actually tested.
+
+        Distinct from :meth:`_fail` on purpose.  A capacity failure is the *gateway's*
+        state, not evidence about the credential, so the panel must not read as "your
+        key is wrong" and must not dead-end: it offers retry, saving the config marked
+        unverified, and switching provider.
+        """
+
+        self._set_busy(False)
+        self._pending_unverified = {"key": key, "base_url": base_url, "compat": compat}
+        self.query_one("#key-recovery", Horizontal).add_class("visible")
+        self._status(
+            f"[bold yellow]▲ {message}[/]\n[dim]{hint}[/]\n"
+            "[dim]Your key was [b]not[/b] rejected — the gateway had no capacity to test it.  "
+            "Press Enter to retry, [b]save anyway[/b] to keep the config marked unverified, "
+            "or [b]switch provider[/b].[/]"
+        )
+        field = self.query_one("#key-field", Input)
+        field.disabled = False
+        field.focus()
+
+    @on(Button.Pressed, "#key-save-anyway")
+    def _save_anyway(self, event: Button.Pressed) -> None:
+        """Keep the configuration even though the provider could not be reached.
+
+        The provider state stays ``degraded/unverified`` until a later successful
+        check, and the model screen falls back to manual entry — an unreachable
+        ``/models`` must not destroy the setup flow.
+        """
+
+        pending = self._pending_unverified
+        if not pending:
+            return
+        entry = self.entry
+        self.setup.api_key = pending.get("key", "")
+        self.setup.env_key = ""
+        self.setup.models = [
+            ModelInfo(id=mid, name=mid, provider=entry.key) for mid in known_model_ids(entry)
+        ]
+        self.setup.models_source = "unverified"
+        self.setup.validation_message = (
+            f"{entry.label} had no capacity to validate the key; saved unverified and will be "
+            "re-checked on first use."
+        )
+        if self.setup.api_key:
+            self.setup.credential_ref = ""  # written as store:<profile>
+        self._pending_unverified = None
+        self._set_busy(False)
+        self.setup.show_models()
+
+    @on(Button.Pressed, "#key-switch")
+    def _switch_provider(self, event: Button.Pressed) -> None:
+        self._pending_unverified = None
+        self._set_busy(False)
+        self.setup.back_to_providers()
 
 
 # --------------------------------------------------------------------------- #
@@ -683,6 +859,10 @@ class ModelScreen(Screen[None]):
             source = "from the built-in catalog"
         elif self.setup.models_source == "manual":
             source = "no list returned — type a model id below"
+        elif self.setup.models_source == "unverified":
+            # The provider was unreachable, so nothing was proven.  Say so plainly:
+            # the user must know the list is a guess they can override by typing.
+            source = "could not be verified — the provider had no capacity; type a model id below to override"
         else:
             source = "from the provider"
         with Vertical(id="model-card"):
@@ -859,6 +1039,8 @@ class ReviewScreen(Screen[None]):
             ("credential", key_line),
             ("models found", f"{len(setup.models)} ({setup.models_source})"),
         ]
+        if setup.models_source == "unverified":
+            rows.append(("provider state", "degraded / unverified — will be re-tested on first use"))
         if setup.base_url:
             rows.insert(1, ("endpoint", setup.base_url))
         body = "\n".join(f"[dim]{name:<14}[/] [bold]{value}[/]" for name, value in rows)
@@ -951,13 +1133,31 @@ class AuthModeScreen(Screen[None]):
         listing.focus()
 
     def _describe(self, mode: AuthMode) -> None:
+        """Render what is local *now*; the session probe arrives a moment later.
+
+        This is the function that froze the setup panel.  ``cli_session_state`` shells
+        out to the provider's CLI with an 8 second timeout, and it was called directly
+        from ``on_mount`` and from every arrow-key highlight — on the Textual event
+        loop.  So the moment a subscription mode was highlighted, the whole app stopped
+        painting and stopped reading input for up to 8 seconds.  Local state renders
+        immediately; the subprocess runs on a worker and patches its line in.
+        """
+
+        self._render_describe(mode, session=None)
+        if mode.kind == "subscription" and mode.cli_command:
+            self._probe_session(mode)
+
+    def _describe_lines(self, mode: AuthMode, session: tuple[str, str] | None) -> list[str]:
         lines = [mode.summary]
         if mode.billing:
             lines.append(f"Billing: {mode.billing}")
         if mode.kind == "subscription" and mode.cli_command:
-            state, detail = cli_session_state(mode)
-            glyph = {"ok": "✓", "login_required": "○", "missing": "✕"}.get(state, "·")
-            lines.append(f"{glyph} {detail}")
+            if session is None:
+                lines.append(f"[dim]· checking whether `{mode.cli_command}` has an active session …[/]")
+            else:
+                state, detail = session
+                glyph = {"ok": "✓", "login_required": "○", "missing": "✕"}.get(state, "·")
+                lines.append(f"{glyph} {detail}")
         conflicts = detect_auth_conflicts(self.setup.entry, mode)
         for conflict in conflicts:
             lines.append(f"{'✕' if conflict.severity == 'error' else '▲'} {conflict.title} — {conflict.detail}")
@@ -965,7 +1165,34 @@ class AuthModeScreen(Screen[None]):
                 lines.append(f"    fix: {conflict.fix}")
         for caveat in mode.caveats:
             lines.append(f"· {caveat}")
-        self.query_one("#auth-detail", Static).update("\n".join(line for line in lines if line))
+        return [line for line in lines if line]
+
+    def _render_describe(self, mode: AuthMode, session: tuple[str, str] | None) -> None:
+        try:
+            self.query_one("#auth-detail", Static).update("\n".join(self._describe_lines(mode, session)))
+        except Exception:  # noqa: BLE001 - the screen may already be gone
+            pass
+
+    @work(exclusive=True, group="auth-session-probe")
+    async def _probe_session(self, mode: AuthMode) -> None:
+        """Ask the provider's CLI about its session, off the UI thread.
+
+        ``exclusive`` means a second highlight cancels the first probe instead of
+        queueing subprocesses behind each other.
+        """
+
+        try:
+            session = await asyncio.to_thread(cli_session_state, mode)
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - a broken CLI must not break setup
+            session = ("unknown", f"could not check `{mode.cli_command}`: {exc}")
+        # Ignore a stale probe: the user has moved on to another mode.
+        if self.modes and self.query_one("#auth-list", OptionList).highlighted is not None:
+            index = self.query_one("#auth-list", OptionList).highlighted
+            if 0 <= index < len(self.modes) and self.modes[index].key != mode.key:
+                return
+        self._render_describe(mode, session)
 
     @on(OptionList.OptionHighlighted, "#auth-list")
     def _highlight(self, event: OptionList.OptionHighlighted) -> None:

@@ -31,8 +31,15 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from unknown_agent.observability.logging import get_logger
+from unknown_agent.providers import resilience
 from unknown_agent.providers.auth import AuthConflict, resolve_auth_mode
-from unknown_agent.providers.health import ProviderReport, ProviderStatus, classify_provider_error, run_provider_check
+from unknown_agent.providers.health import (
+    KIND_TO_STATUS,
+    ProviderReport,
+    ProviderStatus,
+    classify_provider_error,
+    run_provider_check,
+)
 
 log = get_logger("tui.provider_status")
 
@@ -73,6 +80,12 @@ class ProviderState:
     checked_at: float = 0.0
     #: How many recovery attempts have been made since the last good state.
     attempts: int = 0
+    #: Seconds the provider asked us to wait (``Retry-After``), when it said.
+    retry_after: float = 0.0
+    #: Seconds left on the cooldown we imposed so we stop hammering it.
+    cooldown_remaining: float = 0.0
+    #: Machine code from the provider, e.g. ``provider_account_unavailable``.
+    provider_code: str = ""
 
     @property
     def label(self) -> str:
@@ -332,6 +345,10 @@ class ProviderStatusController:
         return os.environ.get(getattr(entry, "env_var", "") or "") or None
 
     def _apply(self, report: ProviderReport) -> ProviderState:
+        # A clean check means the provider answered: drop any cooldown we were
+        # holding, otherwise the UI keeps warning about a problem that is over.
+        if report.ok:
+            resilience.cooldown.clear(self._cooldown_key())
         return self._set(
             status=report.status,
             provider_label=report.provider_label or self.state.provider_label,
@@ -344,6 +361,9 @@ class ProviderStatusController:
             capabilities=dict(report.capabilities),
             checked_at=report.checked_at or time.time(),
             attempts=0 if report.ok else self.state.attempts + 1,
+            retry_after=0.0 if report.ok else self.state.retry_after,
+            cooldown_remaining=0.0 if report.ok else self.cooldown_remaining(),
+            provider_code="" if report.ok else self.state.provider_code,
         )
 
     # -- reacting to live failures ------------------------------------------ #
@@ -353,18 +373,62 @@ class ProviderStatusController:
         A 402 raised by an actual run is the same condition the startup check looks
         for, so it lands in the same state machine and offers the same remedies —
         instead of surfacing as a traceback that kills the session.
+
+        Two things changed here because of the unli.dev 429: the *message* is the
+        classified explanation rather than the provider's raw body (which arrived as
+        a wall of Chinese JSON with no action attached), and a transient failure now
+        starts a cooldown so the next message does not immediately re-send the same
+        requests into a saturated upstream.
         """
 
-        status = classify_provider_error(error)
+        failure = resilience.classify(error, provider=self.state.provider_label or self.state.provider)
+        status = KIND_TO_STATUS.get(failure.kind, ProviderStatus.DEGRADED)
         from unknown_agent.providers.health import _hint_for
+
+        cooldown_remaining = 0.0
+        if failure.retryable:
+            cooldown_remaining = resilience.cooldown.note(
+                self._cooldown_key(), failure, default_seconds=failure.retry_after or 15.0
+            )
+        elif failure.terminal:
+            # The provider answered, so a stale cooldown would only mislead.
+            resilience.cooldown.clear(self._cooldown_key())
 
         return self._set(
             status=status,
-            message=str(error)[:240],
-            hint=_hint_for(status, self.state.provider_label or self.state.provider),
+            message=failure.summary(),
+            hint=failure.hint or _hint_for(status, self.state.provider_label or self.state.provider),
             checked_at=time.time(),
             attempts=self.state.attempts + 1,
+            retry_after=failure.retry_after or 0.0,
+            cooldown_remaining=cooldown_remaining,
+            provider_code=failure.provider_code,
         )
+
+    def note_success(self) -> ProviderState:
+        """A request went through: end any cooldown and clear the failure detail."""
+
+        resilience.cooldown.clear(self._cooldown_key())
+        if self.state.status in {ProviderStatus.RATE_LIMITED, ProviderStatus.TEMPORARILY_UNAVAILABLE}:
+            return self._set(
+                status=ProviderStatus.CONNECTED,
+                message=f"{self.state.provider_label or self.state.provider} is answering again.",
+                hint="",
+                checked_at=time.time(),
+                attempts=0,
+                retry_after=0.0,
+                cooldown_remaining=0.0,
+                provider_code="",
+            )
+        return self.state
+
+    def _cooldown_key(self) -> str:
+        return f"{self.state.provider_label or self.state.provider}:{self.state.model}"
+
+    def cooldown_remaining(self) -> float:
+        """Live cooldown left for this provider, refreshed from the shared state."""
+
+        return resilience.cooldown.remaining(self._cooldown_key())
 
     def note_switch(self, *, provider: str = "", model: str = "", auth_mode: str = "") -> ProviderState:
         """The user changed something; reflect it at once and mark it unverified."""
