@@ -13,7 +13,7 @@ import pytest
 
 from unknown_agent.config.loader import load_settings
 from unknown_agent.providers.health import CheckStage, ProviderReport, ProviderStatus
-from unknown_agent.tui.palette import Command, CommandRegistry, fuzzy_score
+from unknown_agent.tui.commands import Command, CommandRegistry, fuzzy_score
 from unknown_agent.tui.provider_status import ProviderStatusController, StartupHealthResolver
 from unknown_agent.tui.shell_app import ErrorBoundary, TUIAppShell
 from unknown_agent.tui.usage import UsageTracker, estimate_tokens
@@ -30,21 +30,6 @@ def _plain(renderable) -> str:
     with console.capture() as capture:
         console.print(renderable)
     return capture.get()
-
-
-@pytest.fixture()
-def settings(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    config = tmp_path / ".config" / "unknown-agent"
-    config.mkdir(parents=True)
-    (config / "config.toml").write_text(
-        'provider = "openrouter"\n'
-        "[providers.openrouter]\n"
-        'type = "openrouter"\n'
-        'model = "anthropic/claude-sonnet-4"\n'
-        'api_key = "env:OPENROUTER_API_KEY"\n'
-    )
-    return load_settings().settings
 
 
 def _failing_controller(settings, error: Exception) -> ProviderStatusController:
@@ -93,7 +78,7 @@ async def test_402_surfaces_a_banner_with_remedies(settings) -> None:
     async with app.run_test(size=(140, 40)) as pilot:
         await pilot.pause()
         await pilot.pause(0.4)
-        alert = app.query_one("#alert")
+        alert = app.query_one("#notice")
         assert alert.has_class("visible"), "a 402 must be announced in the UI"
         rendered = str(alert.render())
         assert "credits exhausted" in rendered

@@ -118,4 +118,27 @@ def env_password(monkeypatch: pytest.MonkeyPatch) -> str:
     return "s3cr3t-value"
 
 
+@pytest.fixture()
+def settings(tmp_path, monkeypatch):
+    """An isolated config with one configured provider.
+
+    Shared by the TUI test modules so they cannot drift apart on what a
+    "configured" shell looks like.
+    """
+
+    from unknown_agent.config.loader import load_settings
+
+    monkeypatch.setenv("HOME", str(tmp_path))
+    config = tmp_path / ".config" / "unknown-agent"
+    config.mkdir(parents=True, exist_ok=True)
+    (config / "config.toml").write_text(
+        'provider = "openrouter"\n'
+        "[providers.openrouter]\n"
+        'type = "openrouter"\n'
+        'model = "anthropic/claude-sonnet-4"\n'
+        'api_key = "env:OPENROUTER_API_KEY"\n'
+    )
+    return load_settings().settings
+
+
 __all__ = ["REPO_ROOT", "os"]

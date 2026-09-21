@@ -4,6 +4,54 @@ All notable changes to Unknown Agent are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **F3 (provider), F4 (mode) and ctrl+p (palette) crashed** with
+  `NoActiveWorker: push_screen must be run from a worker`. Every action that opens a
+  modal now runs inside a Textual worker. F2 only appeared to work because it
+  early-returned when no models were configured; it had the same latent bug.
+- **ctrl+c never cancelled a running task.** `get_current_worker` is a module-level
+  function, not an `App` method, so a `hasattr` guard silently left the task handle
+  unset and the binding was a no-op.
+- The model switcher was a dead end for `openai-compatible` profiles, which resolve to
+  no catalog vendor: it offered an empty list. A completed health check is now
+  consulted first, and the configured model is always offered as a fallback.
+- An error raised outside two hardcoded regions never reached the provider status
+  controller, so genuine 402/401 failures could go unclassified.
+- The suggestion popup could crash layout with
+  `'NoneType' object has no attribute 'get_height'`: an empty `Static` resolves to a
+  null visual that Textual cannot measure under `height: auto`.
+- The help modal silently truncated its last entries; it now scrolls, with keys.
+- Selected rows in the palette and selectors had no visible highlight (the class is
+  `-highlight`, not `--highlight`), so Enter had no visible target.
+
+### Added
+- **Real slash commands.** Typing `/` in the composer opens an inline, filter-as-you-type
+  popup: arrow keys navigate, Tab completes, Enter runs, Esc dismisses. Previously
+  typing `/` did nothing at all.
+- `unknown_agent.tui.design` — a design-token module (`Tokens`, `DARK`, `LIGHT`,
+  `GLYPH`, and formatting helpers) that is the single source of colour and glyphs.
+- `unknown_agent.tui.commands` — `Command`/`CommandRegistry` with per-command
+  availability predicates, so a command that cannot run is shown disabled with the
+  reason rather than failing when invoked.
+- `unknown_agent.tui.screens` — palette, model/provider/mode selectors, help and
+  confirm dialogs, all sharing one chooser so they behave and look identical.
+- A quit confirmation when a task is running, so work is not silently discarded.
+- `f6` toggles light/dark; the transcript is re-rendered under the new tokens.
+- 19 regression tests covering shortcut safety, slash-command UX, availability
+  handling and cancellation (`tests/test_tui_interaction.py`).
+
+### Changed
+- **Redesigned the TUI**: the neon cyan/violet/pink palette is replaced by a neutral
+  slate ramp with a single muted accent. Colour is now reserved for state and focus;
+  structure is carried by weight, spacing and alignment. No emoji.
+- Header, sidebar cards, notice strip and footer rebuilt on the shared tokens; the
+  footer is generated from the bindings so it cannot advertise a key that is missing.
+- Only implemented shortcuts are bound and shown; nothing unfinished is exposed.
+- `tui/palette.py` was replaced by `tui/commands.py` + `tui/screens.py`.
+- The `settings` test fixture moved to `tests/conftest.py`.
+
 ## [1.1.0] - 2026-09-20
 
 ### Fixed
