@@ -48,6 +48,11 @@ dependencies = [
   "fastapi>=0.115",
   "uvicorn>=0.32",
   "websockets>=13.0",
+  # Form parsing for the panel's upload endpoint, and PDF text extraction for
+  # attachments. Both ship with the product so `ua web` works right after install
+  # with zero manual steps (1.3.0 missed these and crashed on first run).
+  "python-multipart>=0.0.9",
+  "pypdf>=4.0",
   "typing-extensions>=4.12",
 ]
 

@@ -6,6 +6,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.1] - 2026-09-21
+
+### Fixed — `ua web` first-run crash on fresh installs
+
+- `python-multipart` (form parsing for uploads) and `pypdf` (PDF extraction) are now
+  **core dependencies**.  1.3.0 shipped the upload endpoint without declaring the
+  parser, so a clean `pip install` crashed `ua web` at startup with
+  "Form data requires python-multipart".  Reinstalling now pulls everything
+  automatically — no manual `pip install python-multipart` step.
+- Defense in depth: if an install still lacks the parser, the upload route registers
+  as a clear 501 instead of taking the whole panel down at import time.
+
+Docs: the web section now shows the PEP 668-friendly one-liner
+(`--break-system-packages`) for Debian/Ubuntu system pip.
+
 ## [1.3.0] - 2026-09-21
 
 ### Rebuilt — the web panel is now a full product console

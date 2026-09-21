@@ -77,6 +77,22 @@ class _Body(BaseModel):
     auto_extract: bool | None = None
 
 
+def _multipart_ok() -> bool:
+    """python-multipart ships as a core dep; this only guards broken installs."""
+    try:
+        import multipart  # noqa: F401
+
+        return True
+    except ImportError:
+        pass
+    try:
+        import python_multipart  # noqa: F401
+
+        return True
+    except ImportError:
+        return False
+
+
 class _Limiter:
     def __init__(self, max_hits: int = 10, window_s: float = 60.0) -> None:
         self.max_hits = max_hits
@@ -552,7 +568,6 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             return _unauth()
         return JSONResponse({"stopped": _stop(pair[0])})
 
-    @app.post("/api/upload")
     async def upload(request: Request, file: UploadFile = File(...)) -> JSONResponse:
         pair = _session_of(request)
         if not pair:
@@ -570,6 +585,26 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             {"id": meta["id"], "name": meta["name"], "kind": meta["kind"],
              "size": meta["size"], "size_human": meta["size_human"]}
         )
+
+    async def upload_unavailable(request: Request) -> JSONResponse:
+        if not _session_of(request):
+            return _unauth()
+        return JSONResponse(
+            {
+                "error": "uploads unavailable: this install lacks python-multipart; "
+                "reinstall unknown-agent to pull it in"
+            },
+            status_code=501,
+        )
+
+    # The ``File(...)`` signature is inspected at *registration* time, so a box
+    # without python-multipart would crash ``ua web`` entirely if the upload route
+    # were registered unconditionally.  Degrade to a clear 501 instead; the core
+    # dependency list installs it, so a normal install never sees this path.
+    if _multipart_ok():
+        app.add_api_route("/api/upload", upload, methods=["POST"])
+    else:
+        app.add_api_route("/api/upload", upload_unavailable, methods=["POST"])
 
     @app.post("/api/chat")
     async def chat(request: Request, body: _Body) -> JSONResponse:

@@ -160,6 +160,14 @@ ua approve device 123456    # pair a browser that shows code 123456
 ua web --show-token         # reprint the token later
 ```
 
+Install/upgrade straight from the repo (Debian/Ubuntu system pip is
+externally managed, hence the flag):
+
+```bash
+python3 -m pip install --break-system-packages --upgrade \
+  "git+https://github.com/klowerg/Unknown-Agent.git@v1.3.1"
+```
+
 Login accepts the token, or a browser can request access and show a 6-digit code the
 terminal approves — the handshake works while the server is running.
 
