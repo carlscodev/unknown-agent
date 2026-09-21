@@ -52,6 +52,7 @@ from unknown_agent.providers.discovery import (
     fetch_models,
     validate_credential,
 )
+from unknown_agent.providers.auth import AuthMode, auth_modes_for, cli_session_state, detect_auth_conflicts
 from unknown_agent.tui.themes import apply_to_app
 from unknown_agent.tui.widgets import format_context, format_cost, rank_models
 
@@ -80,6 +81,8 @@ class QuickSetupResult:
     provider: str = ""          # profile name in config
     provider_type: str = ""     # catalog key
     provider_label: str = ""
+    #: Which declared auth mode was configured (``chatgpt``/``api_key``/``routed``/…).
+    auth_mode: str = ""
     model: str = ""
     base_url: str = ""
     credential_ref: str = ""
@@ -96,6 +99,7 @@ class QuickSetupResult:
             "provider": self.provider,
             "provider_type": self.provider_type,
             "provider_label": self.provider_label,
+            "auth_mode": self.auth_mode,
             "model": self.model,
             "base_url": self.base_url,
             "credential_ref": self.credential_ref,
@@ -134,6 +138,7 @@ def save_provider_choice(
     base_url: str = "",
     models: Sequence[ModelInfo] = (),
     profile_name: str = "",
+    auth_mode: str = "",
     store: CredentialStore | None = None,
 ) -> QuickSetupResult:
     """Write the provider profile + credential and return the result.
@@ -152,6 +157,10 @@ def save_provider_choice(
     values["model"] = model or values.get("model") or ""
     if base_url:
         values["base_url"] = base_url
+    if auth_mode:
+        # Recorded so later runs report the truth (subscription vs key) instead of
+        # inferring it from whether a credential happens to be present.
+        values["auth_mode"] = auth_mode
 
     chosen = next((item for item in models if item.id == model), None)
     if chosen is not None:
@@ -200,6 +209,7 @@ def save_provider_choice(
         provider=name,
         provider_type=entry.key,
         provider_label=entry.label,
+        auth_mode=auth_mode,
         model=model,
         base_url=base_url,
         credential_ref=reference,
@@ -333,7 +343,8 @@ class ProviderScreen(Screen[None]):
 
     def _choose(self, entry: ProviderEntry) -> None:
         self.setup.entry = entry
-        self.setup.begin_credentials()
+        # Providers declare their own auth modes; never assume "paste a key".
+        self.setup.begin_auth_mode()
 
     def action_cancel(self) -> None:
         self.setup.cancel()
@@ -714,6 +725,224 @@ class ReviewScreen(Screen[None]):
 # --------------------------------------------------------------------------- #
 # the app
 # --------------------------------------------------------------------------- #
+
+# --------------------------------------------------------------------------- #
+# screen 1b — how do you want to authenticate?
+# --------------------------------------------------------------------------- #
+class AuthModeScreen(Screen[None]):
+    """Choose *how* to authenticate, from the modes this provider declares.
+
+    This is the screen the old flow lacked entirely.  It assumed every provider was an
+    API key, which is wrong for Codex (a ChatGPT subscription is a different product
+    with different billing), for routed access, and for self-hosted endpoints.  Each
+    mode shows what it bills, what it needs, and what commonly goes wrong with it, so
+    the choice is made with the consequences visible.
+    """
+
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("ctrl+c", "cancel", "Quit", show=False),
+    ]
+
+    CSS = """
+    AuthModeScreen { align: center middle; }
+    #auth-card {
+        width: 96; max-width: 96%; height: auto; max-height: 92%;
+        border: round $primary; background: $surface; padding: 1 2;
+    }
+    #auth-title { text-style: bold; color: $primary; height: 1; }
+    #auth-sub { color: $text-muted; height: auto; margin-bottom: 1; }
+    #auth-list { height: auto; max-height: 12; border: round $panel-lighten-2 50%; background: $surface; }
+    #auth-detail {
+        height: auto; min-height: 5; margin-top: 1; padding: 0 1;
+        color: $text-muted; border-left: thick $primary 60%;
+    }
+    """
+
+    def __init__(self, setup_app: "SetupApp") -> None:
+        super().__init__()
+        self.setup = setup_app
+        self.modes: list[AuthMode] = list(auth_modes_for(setup_app.entry))
+
+    def compose(self) -> ComposeResult:
+        label = getattr(self.setup.entry, "label", "this provider")
+        with Vertical(id="auth-card"):
+            yield Static("Unknown Agent · setup", id="auth-title")
+            yield Static(
+                f"Step 2 — how should Unknown Agent authenticate with {label}?  "
+                "↑↓ to move, Enter to choose, Esc to go back.",
+                id="auth-sub",
+            )
+            yield OptionList(id="auth-list")
+            yield Static("", id="auth-detail")
+        yield Footer()
+
+    def on_mount(self) -> None:
+        listing = self.query_one("#auth-list", OptionList)
+        for mode in self.modes:
+            line = f"{mode.label}"
+            if mode.recommended:
+                line += "   (recommended)"
+            listing.add_option(Option(line, id=mode.key))
+        if self.modes:
+            listing.highlighted = 0
+            self._describe(self.modes[0])
+        listing.focus()
+
+    def _describe(self, mode: AuthMode) -> None:
+        lines = [mode.summary]
+        if mode.billing:
+            lines.append(f"Billing: {mode.billing}")
+        if mode.kind == "subscription" and mode.cli_command:
+            state, detail = cli_session_state(mode)
+            glyph = {"ok": "✓", "login_required": "○", "missing": "✕"}.get(state, "·")
+            lines.append(f"{glyph} {detail}")
+        conflicts = detect_auth_conflicts(self.setup.entry, mode)
+        for conflict in conflicts:
+            lines.append(f"{'✕' if conflict.severity == 'error' else '▲'} {conflict.title} — {conflict.detail}")
+            if conflict.fix:
+                lines.append(f"    fix: {conflict.fix}")
+        for caveat in mode.caveats:
+            lines.append(f"· {caveat}")
+        self.query_one("#auth-detail", Static).update("\n".join(line for line in lines if line))
+
+    @on(OptionList.OptionHighlighted, "#auth-list")
+    def _highlight(self, event: OptionList.OptionHighlighted) -> None:
+        index = event.option_index
+        if 0 <= index < len(self.modes):
+            self._describe(self.modes[index])
+
+    @on(OptionList.OptionSelected, "#auth-list")
+    def _select(self, event: OptionList.OptionSelected) -> None:
+        index = event.option_index
+        if 0 <= index < len(self.modes):
+            self.setup.choose_auth_mode(self.modes[index])
+
+    def action_back(self) -> None:
+        self.setup.back_to_providers()
+
+    def action_cancel(self) -> None:
+        self.setup.action_hard_cancel()
+
+
+
+
+# --------------------------------------------------------------------------- #
+# screen 2b — subscription sign-in (Codex / ChatGPT)
+# --------------------------------------------------------------------------- #
+class SubscriptionScreen(Screen[None]):
+    """Launch and verify an account login owned by an external CLI.
+
+    There is no key to paste here.  The session belongs to the provider's own CLI, so
+    this screen checks it, runs the login command for the user, and re-checks — and it
+    refuses to continue on an unverified session, because "saved" must mean "tested".
+    """
+
+    BINDINGS = [
+        Binding("escape", "back", "Back"),
+        Binding("ctrl+c", "cancel", "Quit", show=False),
+    ]
+
+    CSS = """
+    SubscriptionScreen { align: center middle; }
+    #sub-card {
+        width: 88; max-width: 96%; height: auto; border: round $primary;
+        background: $surface; padding: 1 2;
+    }
+    #sub-title { text-style: bold; color: $primary; height: 1; }
+    #sub-body { height: auto; color: $text-muted; margin-bottom: 1; }
+    #sub-status { height: auto; min-height: 2; margin-bottom: 1; }
+    #sub-buttons { height: auto; align-horizontal: right; }
+    #sub-buttons Button { margin-left: 1; }
+    """
+
+    def __init__(self, setup_app: "SetupApp") -> None:
+        super().__init__()
+        self.setup = setup_app
+        self.mode: AuthMode = setup_app.auth_mode  # type: ignore[assignment]
+        self.session_ok = False
+
+    def compose(self) -> ComposeResult:
+        with Vertical(id="sub-card"):
+            yield Static("Unknown Agent · setup", id="sub-title")
+            yield Static(
+                f"{self.mode.label}\n{self.mode.summary}\nBilling: {self.mode.billing}",
+                id="sub-body",
+            )
+            yield Static("", id="sub-status")
+            with Horizontal(id="sub-buttons"):
+                yield Button("check again", id="sub-check")
+                yield Button("sign in", id="sub-login", variant="primary")
+                yield Button("continue", id="sub-continue", disabled=True)
+        yield Footer()
+
+    def on_mount(self) -> None:
+        self._check()
+
+    @work(thread=True, exclusive=True)
+    def _check(self) -> None:
+        """Probe the CLI session on a thread; it shells out and can be slow."""
+
+        state, detail = cli_session_state(self.mode)
+        conflicts = detect_auth_conflicts(self.setup.entry, self.mode)
+        self.app.call_from_thread(self._render_check, state, detail, conflicts)
+
+    def _render_check(self, state: str, detail: str, conflicts: list) -> None:
+        self.session_ok = state == "ok"
+        lines = []
+        if state == "ok":
+            lines.append(f"[green]✓ signed in[/] — {detail}")
+        elif state == "missing":
+            lines.append(f"[red]✕ {detail}[/]")
+            lines.append("Install it, or press Esc and pick an API-key mode instead.")
+        else:
+            lines.append(f"[yellow]○ {detail}[/]")
+            lines.append("Press [b]sign in[/b]; the provider's CLI will take over the terminal briefly.")
+        for conflict in conflicts:
+            colour = "red" if conflict.severity == "error" else "yellow"
+            lines.append(f"[{colour}]▲ {conflict.title}[/] — {conflict.detail}")
+            if conflict.fix:
+                lines.append(f"    fix: {conflict.fix}")
+        self.query_one("#sub-status", Static).update("\n".join(lines))
+        self.query_one("#sub-continue", Button).disabled = not self.session_ok
+
+    @on(Button.Pressed, "#sub-check")
+    def _recheck(self) -> None:
+        self.query_one("#sub-status", Static).update("checking…")
+        self._check()
+
+    @on(Button.Pressed, "#sub-login")
+    def _login(self) -> None:
+        """Hand the terminal to the provider's CLI for an interactive login."""
+
+        import shutil
+        import subprocess
+
+        binary = shutil.which(self.mode.cli_command)
+        if not binary:
+            self.query_one("#sub-status", Static).update(f"[red]✕ `{self.mode.cli_command}` is not installed[/]")
+            return
+        with self.app.suspend():
+            subprocess.run([binary, *(self.mode.cli_login_args or ("login",))], check=False)  # noqa: S603
+        self.query_one("#sub-status", Static).update("checking the session…")
+        self._check()
+
+    @on(Button.Pressed, "#sub-continue")
+    def _continue(self) -> None:
+        if self.session_ok:
+            # No credential to store: the CLI owns the session.
+            self.setup.api_key = ""
+            self.setup.credential_ref = ""
+            self.setup.begin_credentials()
+
+    def action_back(self) -> None:
+        self.setup.begin_auth_mode()
+
+    def action_cancel(self) -> None:
+        self.setup.action_hard_cancel()
+
+
+
 class SetupApp(App[QuickSetupResult]):
     """Four panels, one flow, zero commands."""
 
@@ -727,6 +956,8 @@ class SetupApp(App[QuickSetupResult]):
         self.runtime = runtime
         self.theme_key = theme_key
         self.entry: ProviderEntry | None = None
+        #: Which declared auth mode the user picked; drives every screen after it.
+        self.auth_mode: AuthMode | None = None
         self.api_key: str = ""
         self.env_key: str = ""
         self.credential_ref: str = ""
@@ -751,9 +982,47 @@ class SetupApp(App[QuickSetupResult]):
         if len(self.screen_stack) > 1 and not isinstance(self.screen, ProviderScreen):
             self.pop_screen()
 
-    def begin_credentials(self) -> None:
+    def begin_auth_mode(self) -> None:
+        """After a provider is chosen, ask *how* to authenticate.
+
+        A provider with exactly one mode is not worth a screen, so that case skips
+        straight through — but the mode is still recorded, so the config always says
+        which path is in use instead of leaving it implied.
+        """
+
         entry = self.entry
         if entry is None:
+            return
+        modes = auth_modes_for(entry)
+        if len(modes) <= 1:
+            self.auth_mode = modes[0] if modes else None
+            self.begin_credentials()
+            return
+        self._replace_with(AuthModeScreen(self))
+
+    def choose_auth_mode(self, mode: AuthMode) -> None:
+        """Record the mode and route to the setup flow that mode actually needs."""
+
+        self.auth_mode = mode
+        if mode.default_base_url and not self.base_url:
+            self.base_url = mode.default_base_url
+        if mode.kind == "subscription":
+            self._replace_with(SubscriptionScreen(self))
+            return
+        self.begin_credentials()
+
+    def begin_credentials(self) -> None:
+        entry = self.entry
+        mode = self.auth_mode
+        if entry is None:
+            return
+        if mode is not None and mode.requires_base_url and not self.base_url:
+            self.push_screen(BaseUrlScreen(self))
+            return
+        if mode is not None and mode.kind == "none":
+            self.api_key = ""
+            self.credential_ref = ""
+            self._fetch_keyless()
             return
         if entry.requires_base_url and not self.base_url:
             # Resource-specific endpoints (Azure, self-hosted) are asked for in the
@@ -829,6 +1098,7 @@ class SetupApp(App[QuickSetupResult]):
                 credential_ref=self.credential_ref,
                 base_url=self.base_url,
                 models=self.models,
+                auth_mode=self.auth_mode.key if self.auth_mode else "",
             )
         except Exception as exc:  # noqa: BLE001 - surface it in the panel, not as a crash
             log.warning("setup save failed: %s", exc)

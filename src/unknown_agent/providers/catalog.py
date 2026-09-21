@@ -18,7 +18,9 @@ catalog and CLI can never drift apart.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal
+from typing import Any, Literal
+
+from unknown_agent.providers.auth import CODEX_MODES
 
 #: Wire protocol an adapter must implement.
 Protocol = Literal["openai", "anthropic", "ollama", "offline"]
@@ -58,6 +60,10 @@ class ProviderEntry:
     requires_base_url: bool = False
     #: Local providers only make sense when the user actually runs them.
     optional: bool = False
+    #: Explicit authentication modes. Empty means "derive the standard set"
+    #: (:func:`unknown_agent.providers.auth.auth_modes_for`), so a provider is never
+    #: assumed to be API-key-only just because it has an ``env_var``.
+    auth_modes: tuple[Any, ...] = ()
 
     @property
     def listing_path(self) -> str | None:
@@ -120,6 +126,7 @@ class ProviderEntry:
                 "model_listing": self.model_listing != "none",
             },
             "notes": self.notes,
+            "auth_modes": [mode.to_dict() for mode in self.auth_modes],
         }
 
 
@@ -154,6 +161,24 @@ CATALOG: tuple[ProviderEntry, ...] = (
         docs_url="https://platform.openai.com/docs",
         supports_reasoning=True,
         supports_vision=True,
+    ),
+    _entry(
+        key="codex",
+        label="Codex (ChatGPT subscription or API key)",
+        protocol="openai",
+        base_url="https://api.openai.com/v1",
+        env_var="OPENAI_API_KEY",
+        credential_hint="store:codex",
+        default_model="gpt-5-codex",
+        known_models=("gpt-5-codex", "gpt-5", "o4-mini", "gpt-4.1"),
+        docs_url="https://developers.openai.com/codex/cli/",
+        supports_reasoning=True,
+        supports_vision=True,
+        auth_modes=CODEX_MODES,
+        notes=(
+            "Two different products behind one name: your ChatGPT plan (no per-token charge) "
+            "or a direct OpenAI API key (billed per token). The setup panel makes you choose."
+        ),
     ),
     _entry(
         key="anthropic",

@@ -98,6 +98,14 @@ class ProviderConfig(_Base):
         None,
         description="Secret reference, e.g. env:OPENAI_API_KEY, file:~/.keys/openai, keyring:unknown-agent/openai.",
     )
+    #: Which of the provider's declared authentication modes is active
+    #: (``chatgpt`` / ``api_key`` / ``routed`` / ``endpoint`` / ``none``).  ``None``
+    #: means "the provider's recommended mode": providers are not assumed key-only,
+    #: so this is what distinguishes a Codex subscription session from an API key.
+    auth_mode: str | None = Field(
+        None,
+        description="Active authentication mode declared by the provider (see `ua providers auth`).",
+    )
     temperature: float = Field(0.2, ge=0.0, le=2.0)
     max_output_tokens: int = Field(8000, ge=256)
     context_window: int = Field(128_000, ge=4_000)

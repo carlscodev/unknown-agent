@@ -254,6 +254,13 @@ def _register_commands() -> None:
 
     # -- project -----------------------------------------------------------
     app.command("init", rich_help_panel="Project")(misc.init_command)
+    # The shell is a first-class surface, so it needs a first-class command. It was
+    # previously defined but never registered, which is why nobody could reach it.
+    app.command(
+        "tui",
+        rich_help_panel="Project",
+        context_settings={"allow_extra_args": True, "ignore_unknown_options": True},
+    )(misc.tui_command)
     app.command("doctor", rich_help_panel="Project")(doctor.doctor_command)
     app.command("version", rich_help_panel="Project")(misc.version_command)
     app.command("upgrade", rich_help_panel="Project")(misc.upgrade_command)

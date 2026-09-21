@@ -6,6 +6,45 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **The TUI can no longer be blocked by provider state.** Launching the shell used to
+  validate the credential and list models *before* drawing anything, so an account with
+  no credit (HTTP 402), an expired key, an unreachable endpoint or a slow network
+  prevented the UI from opening at all. Startup now touches local configuration only;
+  provider health is resolved on a background worker after the first frame and arrives
+  as UI state. 402, 401, 429, DNS failures, timeouts and unclassified errors all render
+  as an actionable banner with recovery actions, and the shell stays interactive.
+- `ua tui` was defined but never registered as a command, so the shell was unreachable
+  from the CLI. It is now a first-class command.
+
+### Added
+- **Per-provider authentication modes.** Providers declare how they can be reached
+  instead of being assumed key-only: `api_key`, `subscription`, `routed`, `endpoint`
+  and `none`. The setup panel shows the modes for the chosen provider with their
+  billing implications and caveats, and routes to the right flow for each.
+- **Codex supports both sign-in paths.** "Sign in with ChatGPT (subscription)" uses the
+  session owned by the `codex` CLI and is billed through your plan; "OpenAI API key
+  (direct billing)" is billed per token. The difference is stated in the panel, and the
+  subscription flow launches and verifies the login rather than asking for a secret.
+- **Auth-conflict detection.** An exported `OPENAI_API_KEY` can silently override a
+  ChatGPT subscription and bill you per token; this is now detected and explained at
+  configuration time, with the fix, and the *active* path is the one tested.
+- **Real provider testing before anything is marked working.** `run_provider_check`
+  reports independent stages — auth conflicts, credential or session validity, model
+  listing, model availability, capability detection, and an optional inference probe —
+  and returns a normalised status (`ready`, `connected`, `login_required`,
+  `invalid_credentials`, `credits_exhausted`, `degraded`, `offline`, `auth_conflict`,
+  `setup_required`, `rate_limited`, `recovering`) rather than raising.
+- **A redesigned shell.** Conversation area, composer with slash commands, status bar,
+  and a live sidebar: provider health with remedies, a context-window gauge, session
+  metrics (input/output/total tokens, cost, calls, per-model breakdown) and agent state.
+- **Command palette** (`ctrl+p`) with fuzzy search over every command, plus interactive
+  switchers for model (`f2`), provider (`f3`) and reasoning mode (`f4`), and `ctrl+r` to
+  re-check the provider. Every control stays available while the provider is failing.
+- **Honest usage accounting.** `UsageTracker` distinguishes measured usage (from the
+  provider's usage block) from estimates (character counts, shown with `~`), and prices
+  from published rates; unpriced models read `unpriced`, never `$0.00`.
+
 ### Changed
 - **Setup is now a panel, not a command sequence.** `ua setup` opens an interactive
   Textual UI: provider selector → masked API-key dialog → automatic key validation →

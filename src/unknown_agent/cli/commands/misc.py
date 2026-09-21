@@ -376,14 +376,33 @@ def _latest_version() -> str | None:
 # tui (phase two surface, honest stub)
 # --------------------------------------------------------------------------- #
 def tui_command(ctx: typer.Context) -> None:
-    """Launch the interactive TUI (Phase 2 - not yet available)."""
+    """Launch the interactive TUI shell.
 
-    output.print("[ua.warn]The TUI is not available in this release.[/ua.warn]")
-    output.print(
-        "\nThe core is designed for it (Rich + Textual share the event stream), and it ships in Phase 2.\n"
-        "Meanwhile the CLI covers the same workflows:\n"
-        "  ua runs list --limit 5      ua memory search <query>      ua context show --task \"...\"\n"
-    )
+    The shell starts from local configuration only.  It is deliberately *not* gated on
+    provider health: a missing key, an expired subscription, an exhausted account
+    (HTTP 402) or a dead network all resolve into status inside the running UI, where
+    the user can switch provider, switch model, reconfigure or retry.  Refusing to
+    launch because a remote account cannot pay is the bug this replaced.
+    """
+
+    import asyncio
+
+    runtime = ctx.obj
+    settings = None
+    try:
+        settings = runtime.load().settings if runtime is not None else None
+    except Exception as exc:  # noqa: BLE001 - even a broken config still gets a UI
+        output.print(f"[ua.warn]config could not be loaded ({exc}); starting with defaults[/ua.warn]")
+
+    try:
+        from unknown_agent.tui.shell_app import run_app_shell
+    except ImportError:
+        output.print("[ua.warn]The TUI needs Textual.[/ua.warn]")
+        output.print("  pipx inject unknown-agent textual")
+        raise typer.Exit(ExitCode.USAGE) from None
+
+    first_task = " ".join(ctx.args) if getattr(ctx, "args", None) else ""
+    asyncio.run(run_app_shell(settings, first_task=first_task))
     raise typer.Exit(ExitCode.OK)
 
 

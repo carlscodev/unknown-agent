@@ -21,6 +21,7 @@ from unknown_agent.providers.catalog import resolve_entry
 from unknown_agent.providers.discovery import ModelInfo, ProviderProbeError, ValidationResult
 from unknown_agent.tui.quicksetup import (
     ApiKeyScreen,
+    AuthModeScreen,
     ModelScreen,
     ProviderScreen,
     ReviewScreen,
@@ -85,6 +86,21 @@ def isolated_store(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
 # --------------------------------------------------------------------------- #
 # the happy path, end to end, through the real UI
 # --------------------------------------------------------------------------- #
+async def _choose_auth_mode(pilot, app, key: str = "api_key") -> None:
+    """Advance past the auth-mode screen, which now sits between provider and key.
+
+    Providers declare several ways to authenticate, so choosing a provider no longer
+    jumps straight to a key box. Tests that care about the key dialog step through the
+    mode screen explicitly rather than assuming key-only providers.
+    """
+
+    await pilot.pause()
+    if isinstance(app.screen, AuthModeScreen):
+        index = next(i for i, mode in enumerate(app.screen.modes) if mode.key == key)
+        app.screen.query_one("#auth-list").highlighted = index
+        await pilot.press("enter")
+        await pilot.pause()
+
 async def test_panel_walks_provider_key_models_and_saves(tmp_path: Path, online: None, isolated_store: Path) -> None:
     runtime = FakeRuntime(tmp_path)
     app = SetupApp(runtime)
@@ -95,9 +111,10 @@ async def test_panel_walks_provider_key_models_and_saves(tmp_path: Path, online:
         await pilot.press(*"openrouter")
         await pilot.pause()
         await pilot.press("enter")
-        await pilot.pause()
+        await _choose_auth_mode(pilot, app)
         assert isinstance(app.screen, ApiKeyScreen)
         assert app.entry is not None and app.entry.key == "openrouter"
+        assert app.auth_mode is not None and app.auth_mode.key == "api_key"
 
         # 2 — pasting the key and pressing Enter validates *and* fetches models.
         app.screen.query_one("#key-field").value = GOOD_KEY
@@ -132,7 +149,7 @@ async def test_invalid_key_stays_in_the_dialog_with_an_explanation(tmp_path: Pat
     app = SetupApp(FakeRuntime(tmp_path))
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("enter")  # first provider in the list
-        await pilot.pause()
+        await _choose_auth_mode(pilot, app)
         assert isinstance(app.screen, ApiKeyScreen)
         app.screen.query_one("#key-field").value = "sk-not-a-real-key-at-all"
         await pilot.press("enter")
@@ -158,10 +175,10 @@ async def test_empty_key_is_refused_before_any_network_call(tmp_path: Path, onli
     app = SetupApp(FakeRuntime(tmp_path))
     async with app.run_test(size=(120, 40)) as pilot:
         await pilot.press("enter")
-        await pilot.pause()
-        await pilot.press("enter")
-        await pilot.pause()
+        await _choose_auth_mode(pilot, app)
         assert isinstance(app.screen, ApiKeyScreen)
+        await pilot.press("enter")   # submit an empty key
+        await pilot.pause()
         assert "paste" in str(app.screen.query_one("#key-status").render()).lower()
 
 
