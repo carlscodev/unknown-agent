@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+wheels/
+.venv/
+venv/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+.tox/
+.nox/
+
+# Unknown Agent local state (never commit a user's run history or secrets)
+.unknown/runs/
+.unknown/logs/
+.unknown/cache/
+.unknown/artifacts/
+.unknown/backups/
+.unknown/sessions.db
+.unknown/sessions.db-*
+.env
+.env.local
+*.pem
+
+# Editors / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db

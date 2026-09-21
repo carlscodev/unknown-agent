@@ -1,0 +1,139 @@
+[build-system]
+requires = ["hatchling>=1.25", "hatch-vcs>=0.4"]
+build-backend = "hatchling.build"
+
+[project]
+name = "unknown-agent"
+description = "Unknown Agent - a Python-first hyperagent for building, fixing, verifying and shipping real software."
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "Apache-2.0" }
+authors = [{ name = "Unknown Agent Contributors" }]
+keywords = ["agent", "hyperagent", "cli", "coding-agent", "devtools", "automation", "playwright", "llm"]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Operating System :: MacOS",
+  "Operating System :: Microsoft :: Windows",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Topic :: Software Development :: Build Tools",
+  "Topic :: Software Development :: Code Generators",
+  "Topic :: Software Development :: Quality Assurance",
+  "Typing :: Typed",
+]
+dynamic = ["version"]
+
+dependencies = [
+  "typer>=0.12.5",
+  "rich>=13.9",
+  "pydantic>=2.8",
+  "pydantic-settings>=2.4",
+  "httpx>=0.27",
+  "platformdirs>=4.3",
+  "pathspec>=0.12",
+  "PyYAML>=6.0",
+  "tomli-w>=1.0",
+  "tenacity>=9.0",
+  "typing-extensions>=4.12",
+]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.47"]
+tui = ["textual>=0.85"]
+dashboard = ["fastapi>=0.115", "uvicorn>=0.32", "websockets>=13.0"]
+keyring = ["keyring>=25.4"]
+mcp = ["mcp>=1.2"]
+vision = ["pillow>=10.4"]
+dev = [
+  "pytest>=8.3",
+  "pytest-asyncio>=0.24",
+  "pytest-cov>=6.0",
+  "pytest-timeout>=2.3",
+  "ruff>=0.7",
+  "mypy>=1.13",
+  "types-PyYAML>=6.0",
+  "pre-commit>=4.0",
+  "build>=1.2",
+  "twine>=5.1",
+]
+all = ["unknown-agent[browser,tui,keyring,mcp,vision]"]
+
+[project.scripts]
+ua = "unknown_agent.cli.app:main"
+unknown-agent = "unknown_agent.cli.app:main"
+
+[project.urls]
+Homepage = "https://github.com/unknown-agent/unknown-agent"
+Documentation = "https://github.com/unknown-agent/unknown-agent/tree/main/docs"
+Repository = "https://github.com/unknown-agent/unknown-agent"
+Changelog = "https://github.com/unknown-agent/unknown-agent/blob/main/CHANGELOG.md"
+Issues = "https://github.com/unknown-agent/unknown-agent/issues"
+
+[project.entry-points."unknown_agent.plugins"]
+# Third-party distributions register plugins here:  myplugin = "my_pkg.plugin:UnknownAgentPlugin"
+
+[tool.hatch.version]
+path = "src/unknown_agent/version.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/unknown_agent"]
+
+[tool.hatch.build.targets.sdist]
+include = ["src", "tests", "docs", "scripts", "packaging", "README.md", "CHANGELOG.md", "LICENSE", "pyproject.toml"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "N", "UP", "B", "C4", "SIM", "RUF", "PTH", "RET", "ARG", "TID"]
+ignore = ["B008", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ARG001", "ARG002"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src/unknown_agent"]
+mypy_path = "src"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+no_implicit_optional = true
+strict_equality = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+check_untyped_defs = true
+
+[[tool.mypy.overrides]]
+module = ["unknown_agent.browser.*"]
+disallow_untyped_defs = false
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+addopts = "-ra --strict-markers --strict-config"
+testpaths = ["tests"]
+timeout = 120
+asyncio_mode = "auto"
+markers = [
+  "integration: tests that touch the filesystem, subprocesses, or network",
+  "browser: tests that require Playwright browsers to be installed",
+  "slow: slower end-to-end tests",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["src/unknown_agent"]
+omit = ["src/unknown_agent/cli/commands/*"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError"]

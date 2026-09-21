@@ -1,0 +1,128 @@
+╭───────────────────────── setup ──────────────────────────╮
+│                                                          │
+│   Unknown Agent  v1.0.0                                  │
+│   A CLI hyperagent that builds, fixes and ships real     │
+│   software.                                              │
+│                                                          │
+│   Let's connect a model provider.  Takes about 30        │
+│   seconds - you will paste an API key and pick a         │
+│   model.                                                 │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+step 1 of 5  Choose a provider
+  every provider below has a working adapter; Enter selects
+the recommended one
+  ──────────────────────────────────────────────────────────
+──────
+None
+                         providers
+ provider               proto…  t…  mod…  key from
+ OpenRouter             openai  ✔   live  OPENROUTER_API_K…
+ OpenAI                 openai  ✔   live  OPENAI_API_KEY
+ Anthropic              anthr…  ✔   live  ANTHROPIC_API_KEY
+ Mistral AI             openai  ✔   live  MISTRAL_API_KEY
+ DeepSeek               openai  ✔   live  DEEPSEEK_API_KEY
+ xAI (Grok)             openai  ✔   live  XAI_API_KEY
+ Groq                   openai  ✔   live  GROQ_API_KEY
+ Google Gemini          openai  ✔   live  GEMINI_API_KEY
+ Together AI            openai  ✔   live  TOGETHER_API_KEY
+ Fireworks AI           openai  ✔   list  FIREWORKS_API_KEY
+ Cerebras               openai  ✔   live  CEREBRAS_API_KEY
+ NVIDIA NIM             openai  ✔   live  NVIDIA_API_KEY
+ Moonshot (Kimi)        openai  ✔   live  MOONSHOT_API_KEY
+ Alibaba Qwen (DashSc…  openai  ✔   live  DASHSCOPE_API_KEY
+ Zhipu GLM              openai  ✔   live  ZHIPU_API_KEY
+ Cohere                 openai  ✔   live  COHERE_API_KEY
+ Perplexity             openai  —   list  PERPLEXITY_API_K…
+ Azure OpenAI           openai  ✔   list  AZURE_OPENAI_API…
+ Ollama (local)         ollama  ✔   live  no key
+ LM Studio (local)      openai  —   live  no key
+ Offline (no model)     offli…  ✔   list  no key
+step 2 of 5  Paste your API key
+  OpenRouter · the key is masked, validated immediately, and
+stored with 0600 permissions
+  ──────────────────────────────────────────────────────────
+──────
+None
+╭─────────────────────── openrouter ───────────────────────╮
+│                                                          │
+│  Paste your OpenRouter API key and press Enter.          │
+│                                                          │
+│    where to get one: https://openrouter.ai/docs          │
+│    stored as: ~/.config/unknown-agent/credentials.toml   │
+│  (mode 0600), never in the project, never in logs        │
+│                                                          │
+│    found existing key: OPENROUTER_API_KEY is set in      │
+│  your environment                                        │
+│                                                          │
+│    the key is masked as you type; input is validated     │
+│  immediately.                                            │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯
+step 3 of 5  Validating and fetching models
+  talking to OpenRouter ...
+  ──────────────────────────────────────────────────────────
+──────
+None
+step 4 of 5  Choose your default model
+  tool-capable and cheaper models are listed first
+  ──────────────────────────────────────────────────────────
+──────
+None
+                           models
+ #  model      context  tools  reason  vision  $/Mtok in·out
+ 1  AionLabs:     131k    ✔                          0.8·1.6
+    Aion-2.0
+ 2  AionLabs:     131k    ✔                              3·6
+    Aion-3.0
+ 3  AionLabs:     131k    ✔                          0.7·1.4
+    Aion-3.0-
+    Mini
+ 4  Amazon:      1000k    ✔              ✔           0.3·2.5
+    Nova 2
+    Lite
+ 5  Amazon:       300k    ✔              ✔         0.06·0.24
+    Nova Lite
+    1.0
+ 6  Amazon:       128k    ✔                       0.035·0.14
+    Nova
+    Micro 1.0
+ 7  Amazon:      1000k    ✔              ✔          2.5·12.5
+    Nova
+    Premier
+    1.0
+ 8  Amazon:       300k    ✔              ✔           0.8·3.2
+    Nova Pro
+    1.0
+ 9  Anthropic     200k    ✔              ✔         0.25·1.25
+    : Claude
+    3 Haiku
+10  Anthropic    1000k    ✔              ✔             10·50
+    : Claude
+    Fable 5
+11  Anthropic    1000k    ✔              ✔             10·50
+    : Claude
+    Fable 5.1
+12  Anthropic    1000k    ✔              ✔              5·25
+    : Claude
+    Fable 5.1
+    (batch)
+showing 12 of 25 - type a number, a name fragment, or 'all'
+╭───────────────────── setup complete ─────────────────────╮
+│                                                          │
+│   ✔ Ready to build.                                      │
+│                                                          │
+│     provider  OpenRouter                                 │
+│     model     openai/gpt-4o-mini                         │
+│     models    446 available                              │
+│     config    ~/.config/unknown-agent/config.toml        │
+│                                                          │
+│     next                                                 │
+│       ua run "build a landing page for my API"           │
+│       ua doctor          # verify everything end to      │
+│   end                                                    │
+│       ua providers list  # add or switch providers       │
+│   later                                                  │
+│                                                          │
+│                                                          │
+╰──────────────────────────────────────────────────────────╯

@@ -1,0 +1,41 @@
+"""CLI command modules, grouped by product surface."""
+
+from unknown_agent.cli.commands import (
+    agent,
+    browser,
+    config_cmd,
+    context_cmd,
+    doctor,
+    inspect,
+    mcp_cmd,
+    memory_cmd,
+    misc,
+    orchestration,
+    plugins,
+    providers_cmd,
+    runs,
+    sessions,
+    skills,
+    tools,
+    verify,
+)
+
+__all__ = [
+    "providers_cmd",
+    "agent",
+    "mcp_cmd",
+    "browser",
+    "config_cmd",
+    "context_cmd",
+    "doctor",
+    "inspect",
+    "memory_cmd",
+    "misc",
+    "orchestration",
+    "plugins",
+    "runs",
+    "sessions",
+    "skills",
+    "tools",
+    "verify",
+]
