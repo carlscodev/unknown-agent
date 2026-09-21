@@ -367,6 +367,9 @@ class TUIAppShell(App[None]):
         self._task_worker: Any = None
         self._history: list[str] = []
         self._history_index = 0
+        #: The unsent text stashed the first time the user walks back into history,
+        #: so ↓ past the newest entry restores exactly what they were typing.
+        self._draft: str = ""
         #: Retained transcript entries, replayed when the theme changes.
         self._transcript: list[Any] = []
         #: Set while a Tab completion rewrites the composer, so the resulting
@@ -1030,9 +1033,9 @@ class TUIAppShell(App[None]):
         elif bp == "narrow":
             entries = [("ctrl+p", "commands"), ("/", "slash"), ("f1", "help"), ("f5", "info")]
         elif bp == "compact":
-            entries = [("ctrl+p", "commands"), ("/", "slash"), ("f1", "help"), ("f2", "model"), ("f3", "provider")]
+            entries = [("ctrl+p", "commands"), ("/", "slash"), ("f1", "help"), ("f2", "model"), ("f3", "provider"), ("↑↓", "history")]
         else:
-            entries = [("ctrl+p", "commands"), ("/", "slash"), ("f1", "help"), ("f2", "model"), ("f3", "provider"), ("f4", "mode")]
+            entries = [("ctrl+p", "commands"), ("/", "slash"), ("f1", "help"), ("f2", "model"), ("f3", "provider"), ("f4", "mode"), ("↑↓", "history"), ("esc", "clear")]
 
         # Check available width and drop trailing entries if they'd clip
         try:
@@ -1220,40 +1223,98 @@ class TUIAppShell(App[None]):
                 self.slash.close()
 
     async def on_key(self, event: Any) -> None:
-        """Route navigation keys to the popup while it is open.
+        """Route navigation keys.
 
-        Handled here rather than as bindings because these keys must keep their normal
-        meaning in the composer whenever the popup is closed.
+        With the slash popup open they drive the popup.  With it closed they become
+        the muscle-memory a chat input is expected to have: ↑/↓ walk the prompt
+        history and Esc clears the composer.  Handled here rather than as bindings
+        because these keys must keep their normal meaning whenever they are not
+        actively consumed.
         """
 
+        key = getattr(event, "key", "")
         try:
             popup = self.slash
         except Exception:  # noqa: BLE001 - not mounted yet
-            return
-        if not popup.is_open:
+            popup = None
+
+        if popup is not None and popup.is_open:
+            if key in {"down", "up"}:
+                popup.move(1 if key == "down" else -1)
+                event.stop()
+                event.prevent_default()
+            elif key == "escape":
+                popup.close()
+                event.stop()
+                event.prevent_default()
+            elif key == "tab":
+                command = popup.current
+                if command is not None:
+                    composer = self.query_one("#composer", Input)
+                    # Suppress the Changed event this assignment triggers, otherwise the
+                    # popup re-opens on the completed text and Tab appears to do nothing.
+                    self._suppress_suggestions = True
+                    composer.value = f"/{command.slash}"
+                    composer.action_end()
+                    popup.close()
+                event.stop()
+                event.prevent_default()
             return
 
-        key = getattr(event, "key", "")
-        if key in {"down", "up"}:
-            popup.move(1 if key == "down" else -1)
+        # Popup closed: composer-level editing conveniences.
+        if not self._composer_focused():
+            return
+        if key in {"up", "ctrl+up"}:
+            self._history_prev()
+            event.stop()
+            event.prevent_default()
+        elif key in {"down", "ctrl+down"}:
+            self._history_next()
             event.stop()
             event.prevent_default()
         elif key == "escape":
-            popup.close()
-            event.stop()
-            event.prevent_default()
-        elif key == "tab":
-            command = popup.current
-            if command is not None:
-                composer = self.query_one("#composer", Input)
-                # Suppress the Changed event this assignment triggers, otherwise the
-                # popup re-opens on the completed text and Tab appears to do nothing.
-                self._suppress_suggestions = True
-                composer.value = f"/{command.slash}"
-                composer.action_end()
-                popup.close()
-            event.stop()
-            event.prevent_default()
+            composer = self.query_one("#composer", Input)
+            if composer.value:
+                composer.value = ""
+                event.stop()
+                event.prevent_default()
+
+    # -- prompt history ---------------------------------------------------- #
+    def _composer_focused(self) -> bool:
+        try:
+            return self.query_one("#composer", Input) is self.focused
+        except Exception:  # noqa: BLE001 - not mounted yet
+            return False
+
+    def _set_composer(self, text: str) -> None:
+        composer = self.query_one("#composer", Input)
+        # Rewriting the value fires Input.Changed; suppress the slash popup so a
+        # recalled "/..." command does not pop suggestions over the user's head.
+        self._suppress_suggestions = True
+        composer.value = text
+        composer.action_end()
+
+    def _history_prev(self) -> None:
+        """↑ — walk back through submitted prompts, stashing the current draft."""
+
+        if not self._history:
+            return
+        if self._history_index == len(self._history):
+            self._draft = self.query_one("#composer", Input).value
+        if self._history_index > 0:
+            self._history_index -= 1
+            self._set_composer(self._history[self._history_index])
+
+    def _history_next(self) -> None:
+        """↓ — walk forward; past the newest entry the stashed draft is restored."""
+
+        if self._history_index >= len(self._history):
+            return
+        self._history_index += 1
+        if self._history_index == len(self._history):
+            self._set_composer(self._draft)
+        else:
+            self._set_composer(self._history[self._history_index])
 
     @on(SlashSuggestions.Selected)
     def _on_slash_selected(self, event: SlashSuggestions.Selected) -> None:
@@ -1292,12 +1353,19 @@ class TUIAppShell(App[None]):
 
         self._history.append(text)
         self._history_index = len(self._history)
+        self._draft = ""
         # Persist user turn immediately so resume restores it even if the run never completes
         try:
             self._persist_tui_message("user", text)
         except Exception:
             pass
         self.run_task(text)
+        # A chat input that loses focus after every send forces a tap/click per
+        # message; keep the fingers where they were.
+        try:
+            self.query_one("#composer", Input).focus()
+        except Exception:  # noqa: BLE001 - focus must never break a submit
+            pass
 
     def invoke(self, command: Command) -> None:
         """Run a command from any surface, with availability and errors handled once."""

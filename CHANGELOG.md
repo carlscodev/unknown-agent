@@ -6,6 +6,28 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.8] - 2026-09-21
+
+### Added — the chat composer now behaves like a real chat input
+
+- **Prompt history**: `↑`/`↓` (and `ctrl+↑`/`ctrl+↓`) walk through previously sent
+  prompts, exactly the muscle-memory a chat box is expected to have. Walking back
+  past the newest entry restores the unsent draft, so nothing you were typing is
+  lost. Recalling a `/command` does **not** re-open the slash popup over your head.
+- **Esc clears** the composer when it has text (with the popup closed), matching the
+  common expectation instead of leaving stray text.
+- **Focus sticks**: the composer keeps focus after every send, so on a phone you no
+  longer need an extra tap per message to type the next one.
+- Footer now advertises the new keys (`↑↓ history`, `esc clear`) on wide/compact
+  layouts, and the existing width-pruning drops them automatically where they would
+  clip on narrow/phone.
+
+### Tests
+
+- `tests/test_composer_input.py` — 6 tests driving the real shell headlessly:
+  history walk, draft restore, no-popup-on-recall, Esc clear, focus retention, and
+  empty-history no-op.
+
 ## [1.1.7] - 2026-09-21
 
 ### Fixed — `/setup` froze on saturated gateways, and HTTP 429 was misread
