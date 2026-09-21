@@ -352,6 +352,23 @@ def _provider_checks(loaded: object) -> list[Check]:
     else:
         checks.append(Check("onboarding", "ok", f"{label} is configured", group="provider"))
 
+    # Is the guided panel actually usable here?  A user who gets plain questions
+    # instead of the UI deserves to find the reason in doctor, not guess at it.
+    try:
+        import textual  # noqa: F401
+
+        checks.append(Check("setup panel", "ok", "textual is installed - `ua setup` opens the guided panel", group="provider"))
+    except ImportError:
+        checks.append(
+            Check(
+                "setup panel",
+                "warn",
+                "textual is not installed - `ua setup` falls back to plain questions",
+                fix="pipx inject unknown-agent textual   (or: pip install textual)",
+                group="provider",
+            )
+        )
+
     checks.append(Check("profile", "ok", f"{profile_name} -> {label} ({profile.type})", group="provider"))
     checks.append(
         Check(

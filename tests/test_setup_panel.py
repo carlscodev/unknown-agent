@@ -272,3 +272,71 @@ def test_models_use_without_an_id_is_allowed(tmp_path: Path) -> None:
 
     default = inspect.signature(models_use).parameters["model"].default
     assert getattr(default, "default", "missing") is None
+
+
+# --------------------------------------------------------------------------- #
+# when the panel cannot run, say why
+# --------------------------------------------------------------------------- #
+class _FakeOutput:
+    """Stands in for the global output manager: a real terminal, human mode."""
+
+    is_machine = False
+    interactive = True
+
+
+def test_blocker_names_the_missing_dependency(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A user without textual must be told that, not silently downgraded."""
+
+    import builtins
+
+    from unknown_agent.onboarding import panel
+
+    real_import = builtins.__import__
+
+    def no_textual(name, *args, **kwargs):  # noqa: ANN001, ANN202
+        if name == "textual":
+            raise ImportError("no textual")
+        return real_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(panel, "output", _FakeOutput())
+    monkeypatch.setattr(panel.sys, "stdin", type("S", (), {"isatty": staticmethod(lambda: True)})())
+    monkeypatch.setattr(builtins, "__import__", no_textual)
+
+    reason = panel.panel_blocker(None)
+    assert "textual" in reason
+    assert panel.panel_available(None) is False
+
+
+def test_blocker_is_empty_when_everything_is_in_place(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unknown_agent.onboarding import panel
+
+    monkeypatch.setattr(panel, "output", _FakeOutput())
+    monkeypatch.setattr(panel.sys, "stdin", type("S", (), {"isatty": staticmethod(lambda: True)})())
+    assert panel.panel_blocker(None) == ""
+
+
+def test_blocker_explains_a_piped_terminal(monkeypatch: pytest.MonkeyPatch) -> None:
+    from unknown_agent.onboarding import panel
+
+    class Piped(_FakeOutput):
+        interactive = False
+
+    monkeypatch.setattr(panel, "output", Piped())
+    assert "not a terminal" in panel.panel_blocker(None)
+
+
+def test_fallback_tells_the_user_no_flags_are_needed(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The old flow must never leave the impression that flags are required."""
+
+    from unknown_agent.onboarding import panel
+
+    printed: list[str] = []
+
+    class Recorder(_FakeOutput):
+        @staticmethod
+        def print(*args: Any, **kwargs: Any) -> None:
+            printed.append(str(args[0]) if args else "")
+
+    monkeypatch.setattr(panel, "output", Recorder())
+    panel._warn_no_panel("the 'textual' package is not installed in this environment")
+    assert printed, "the user must be told the panel could not open"

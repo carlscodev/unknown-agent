@@ -27,7 +27,7 @@ from unknown_agent.ui.console import output
 
 log = get_logger("onboarding.panel")
 
-__all__ = ["launch_setup", "panel_available", "SetupOutcome"]
+__all__ = ["launch_setup", "panel_available", "panel_blocker", "SetupOutcome"]
 
 
 class SetupOutcome:
@@ -49,24 +49,37 @@ class SetupOutcome:
         return data
 
 
-def panel_available(runtime: Any = None) -> bool:
-    """Can the full-screen panel run here?  (TTY on both ends + textual.)"""
+def panel_blocker(runtime: Any = None) -> str:
+    """Why can the panel *not* run here?  Empty string means it can.
+
+    Returned as a reason rather than a bool because "the nice UI did not appear"
+    is exactly the moment a user needs to be told why, in words they can act on -
+    not silently dropped into a lesser experience.
+    """
 
     if runtime is not None and getattr(runtime, "non_interactive", False):
-        return False
-    if output.is_machine or not output.interactive:
-        return False
+        return "--non-interactive was requested"
+    if output.is_machine:
+        return "output is machine-readable (--json/--ndjson)"
+    if not output.interactive:
+        return "stdout is not a terminal (piped or redirected)"
     try:
         stdin_tty = sys.stdin is not None and sys.stdin.isatty()
     except (OSError, ValueError):  # pragma: no cover - closed stdin
         stdin_tty = False
     if not stdin_tty:
-        return False
+        return "stdin is not a terminal (piped, or running under a tool that captures input)"
     try:
         import textual  # noqa: F401
     except ImportError:
-        return False
-    return True
+        return "the 'textual' package is not installed in this environment"
+    return ""
+
+
+def panel_available(runtime: Any = None) -> bool:
+    """Can the full-screen panel run here?  (TTY on both ends + textual.)"""
+
+    return not panel_blocker(runtime)
 
 
 def _theme_key(runtime: Any) -> str | None:
@@ -92,7 +105,8 @@ def launch_setup(runtime: Any, *, scripted: Any = None, force_fallback: bool = F
         [options.provider, options.model, options.api_key, options.api_key_env, options.base_url, options.profile_name]
     )
 
-    if not has_flags and not force_fallback and panel_available(runtime):
+    blocker = panel_blocker(runtime)
+    if not has_flags and not force_fallback and not blocker:
         from unknown_agent.tui.quicksetup import run_setup_panel
 
         try:
@@ -108,10 +122,37 @@ def launch_setup(runtime: Any, *, scripted: Any = None, force_fallback: bool = F
         _render_success(result)
         return SetupOutcome(ok=True, payload=result.to_dict())
 
+    # Falling back silently is how a user ends up typing flags they never wanted.
+    # Say what happened, why, and how to get the panel back.
+    if not has_flags and not force_fallback and blocker:
+        _warn_no_panel(blocker)
+
     outcome = asyncio.run(run_onboarding(runtime, options=options, prompter=getattr(runtime, "prompter", None)))
     if outcome is None:
         return SetupOutcome(ok=False)
     return SetupOutcome(ok=True, payload=outcome.to_dict())
+
+
+def _warn_no_panel(reason: str) -> None:
+    """Explain a missing panel instead of letting the user think this is the product."""
+
+    from unknown_agent.onboarding import screens
+
+    fix = (
+        "Install it with:  pipx inject unknown-agent textual   (or: pip install textual)"
+        if "textual" in reason
+        else "Run `ua setup` directly in a normal terminal window - not piped, and not inside "
+        "a tool that captures input."
+    )
+    output.print(
+        screens.info_panel(
+            "the guided setup panel could not open",
+            f"Reason: {reason}.\n\n"
+            "Falling back to simple questions. You can still just answer them - "
+            "you do NOT need to pass any --provider or --api-key-env flags.",
+            hint=fix,
+        )
+    )
 
 
 def _render_success(result: Any) -> None:

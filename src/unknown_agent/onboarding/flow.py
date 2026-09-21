@@ -99,8 +99,7 @@ async def run_onboarding(
             screens.info_panel(
                 "setup cancelled",
                 f"stopped at: {step}. Nothing was written - your configuration is unchanged.",
-                hint="Run `ua setup` again whenever you want, or use flags for scripted setups "
-                "(`ua setup --provider groq --api-key-env GROQ_API_KEY`).",
+                hint="Run `ua setup` again whenever you want - it will pick up where it makes sense.",
             )
         )
 
@@ -206,8 +205,12 @@ async def _choose_provider(
         if interactive:
             screens.step_header(1, "Choose a provider", "every provider below has a working adapter; Enter selects the recommended one")
         output.print(screens.provider_table(entries, highlight=tuple(getattr(settings, "providers", {}) or ())))
-        answer = prompter.text("provider (name, number, or Enter for OpenRouter)", default="openrouter", allow_empty=True)
-        if not answer:
+        answer = prompter.text(
+            "Type the NUMBER of the provider you want (or press Enter for 1, OpenRouter)",
+            default="1",
+            allow_empty=True,
+        )
+        if not answer or answer == "1":
             return entries[0]
         if answer.isdigit() and 1 <= int(answer) <= len(entries):
             return entries[int(answer) - 1]
