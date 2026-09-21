@@ -55,6 +55,34 @@ def _runtime(ctx: typer.Context) -> Runtime:
     return runtime
 
 
+def _ensure_configured(runtime: Runtime) -> None:
+    """No provider yet?  Open the setup panel instead of failing with a hint.
+
+    This is what makes the guided panel the *default* path: a brand-new user can
+    type ``ua run "..."`` and be walked through provider, key and model without
+    ever learning a configuration command.  Automation (``--json``, ``--non-interactive``,
+    no TTY) keeps the old, explicit error so scripts never hang on a UI.
+    """
+
+    from unknown_agent.onboarding.detect import detect_setup_state
+    from unknown_agent.onboarding.panel import launch_setup, panel_available
+
+    state = detect_setup_state(runtime.load().settings)
+    if state.ready:
+        return
+    if not panel_available(runtime):
+        from unknown_agent.errors import ConfigError
+
+        raise ConfigError(
+            state.reason or "No provider is configured.",
+            hint=state.hint or "Run `ua setup` in a terminal to open the guided setup panel.",
+        )
+    output.print(f"[ua.warn]{state.reason or 'not configured yet'} — opening the setup panel …[/ua.warn]")
+    outcome = launch_setup(runtime)
+    if not outcome.ok:
+        raise typer.Exit(ExitCode.CONFIG)
+
+
 def _execute(
     ctx: typer.Context,
     *,
@@ -73,6 +101,7 @@ def _execute(
 ) -> None:
     runtime = _runtime(ctx)
     runtime.start_logging()
+    _ensure_configured(runtime)
     loaded = runtime.load()
     overrides = {"read_only": True} if read_only else None
     if overrides:

@@ -46,7 +46,7 @@ Linux is the primary platform; macOS and Windows are supported.
 
 ```bash
 pipx install "git+https://github.com/klowerg/Unknown-Agent"        # or: uv tool install "git+https://github.com/klowerg/Unknown-Agent"
-ua setup                                                 # guided first-run onboarding
+ua setup                                                 # interactive setup panel (provider → key → model)
 ```
 
 `pipx` gives the CLI its own virtualenv, a `ua` command on PATH, and one-command
@@ -105,11 +105,24 @@ pipx uninstall unknown-agent   # equivalent for pipx installs
 ua                                            # first run: pick a provider, paste a key, go
 ```
 
-Onboarding asks for a provider (21 of them, every one with a working adapter), a masked
-API key, then validates the key, fetches the live model list and saves your choice:
+Setup is a **panel, not a command sequence**. `ua setup` (or just running `ua` before
+anything is configured) opens a full-screen terminal UI:
+
+1. a **provider selector** — 21 providers, every one with a working adapter, filterable;
+2. an **API-key dialog** — masked input; press **Enter** and the key is validated
+   immediately;
+3. **automatic model fetching** — a valid key goes straight to the provider's models
+   endpoint (OpenRouter `/models`, OpenAI `/models`, Anthropic `/models`, Ollama
+   `/api/tags`), with the curated catalog as the fallback;
+4. a **model selector** with context window, tools, vision and price;
+5. a **review + save** step, then a clean success panel.
+
+A rejected key stays in the dialog with a plain-language explanation and a retry — never
+a raw traceback — and nothing is written until you save.
 
 ```bash
-ua setup                                      # provider -> key -> validate -> models -> model -> save
+ua setup                                      # the interactive panel (recommended)
+ua setup --classic                            # plain prompts, no full-screen UI
 ua setup --provider groq --api-key-env GROQ_API_KEY       # scripted, no prompts
 ua providers list                             # configured profiles, credential state, active one
 ua models list -s llama                       # what this provider actually offers

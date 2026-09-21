@@ -15,7 +15,6 @@ Design goals:
 
 from __future__ import annotations
 
-import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -31,7 +30,7 @@ PROMPT = "ua ›"
 
 SLASH_HELP: tuple[tuple[str, str], ...] = (
     ("/help", "show this help"),
-    ("/setup", "run or re-run provider onboarding"),
+    ("/setup", "open the interactive setup panel (provider, key, model)"),
     ("/provider", "show or switch the active provider profile"),
     ("/model [id]", "show or set the default model"),
     ("/models", "list models the active provider offers"),
@@ -65,14 +64,18 @@ class AgentShell:
             if auto_setup and self.interactive:
                 output.print(
                     Text(
-                        f"Unknown Agent needs a quick setup first ({state.reason}).",
+                        f"Unknown Agent is not configured yet ({state.reason}). Opening the setup panel …",
                         style="ua.warn",
                     )
                 )
                 if not self._offer_setup():
                     return int(ExitCode.CONFIG)
             else:
-                output.error_panel("CONFIG ERROR", state.reason, hint=state.hint)
+                output.error_panel(
+                    "CONFIG ERROR",
+                    state.reason,
+                    hint=state.hint or "Run `ua setup` in a terminal to open the guided setup panel.",
+                )
                 return int(ExitCode.CONFIG)
 
         if not self.interactive:
@@ -255,22 +258,33 @@ class AgentShell:
             output.error_panel("ERROR", exc.message, hint=exc.hint)
 
     def _offer_setup(self) -> bool:
-        if not self.prompter.confirm("Configure a provider now?", default=True):
+        """Route straight into the setup panel; no command to remember.
+
+        When the panel can run (a real terminal + textual) it *is* the setup, so the
+        user is not asked to confirm something they already asked for by running the
+        agent.  Without a panel we still ask before taking over the prompt.
+        """
+
+        from unknown_agent.onboarding.panel import panel_available
+
+        if not panel_available(self.runtime) and not self.prompter.confirm("Configure a provider now?", default=True):
             return False
         return self._setup_flow()
 
     def _setup_flow(self) -> bool:
-        from unknown_agent.onboarding.flow import run_onboarding
+        from unknown_agent.onboarding.panel import launch_setup
 
         try:
-            result = asyncio.run(run_onboarding(self.runtime))
+            outcome = launch_setup(self.runtime)
         except UnknownAgentError as exc:
             output.error_panel("SETUP ERROR", exc.message, hint=exc.hint)
             return False
         except KeyboardInterrupt:
             output.print("[ua.muted]setup cancelled[/ua.muted]")
             return False
-        return result is not None
+        if not outcome.ok and outcome.error:
+            output.error_panel("SETUP ERROR", outcome.error, hint="Run `ua setup` to try again.")
+        return outcome.ok
 
 
 #: Sentinel returned by :func:`_piped_task` when the pipe simply says "quit".

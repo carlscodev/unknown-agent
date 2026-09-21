@@ -16,6 +16,11 @@ Two applications share one widget set and one theme source:
     live orchestration board.  Design rule: never a bare control — every widget
     carries its own explanation.
 
+:mod:`~unknown_agent.tui.quicksetup`
+    The default setup experience: a provider selector, a modal API-key dialog that
+    validates and fetches the model catalog on Enter, a model selector and a save
+    step.  Four panels, no commands.
+
 :mod:`~unknown_agent.tui.onboarding`
     The twelve-step first-run wizard.  Live re-theming, per-step gating, network
     only where it earns its place (validate, list models) and an offline fallback
@@ -37,6 +42,16 @@ from __future__ import annotations
 
 from unknown_agent.tui.app import AgentShell, ComposerMessage, ShellBridge, StatusSnapshot, run_shell
 from unknown_agent.tui.onboarding import STEP_LABELS, STEP_ORDER, OnboardingApp, WizardState, build_wizard, run_onboarding_tui
+from unknown_agent.tui.quicksetup import (
+    ApiKeyScreen,
+    ModelScreen,
+    ProviderScreen,
+    QuickSetupResult,
+    ReviewScreen,
+    SetupApp,
+    run_setup_panel,
+    save_provider_choice,
+)
 from unknown_agent.tui.themes import apply_to_app, available_theme_names, register_all, theme_name, to_textual_theme
 from unknown_agent.tui.widgets import (
     ApiKeyInput,
@@ -70,6 +85,15 @@ __all__ = [
     "WizardState",
     "build_wizard",
     "run_onboarding_tui",
+    # guided setup panel
+    "ApiKeyScreen",
+    "ModelScreen",
+    "ProviderScreen",
+    "QuickSetupResult",
+    "ReviewScreen",
+    "SetupApp",
+    "run_setup_panel",
+    "save_provider_choice",
     # themes
     "apply_to_app",
     "available_theme_names",

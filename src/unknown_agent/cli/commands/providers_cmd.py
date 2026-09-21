@@ -25,6 +25,7 @@ from unknown_agent.config.secrets import resolve_secret
 from unknown_agent.errors import ConfigError, ExitCode, UsageError
 from unknown_agent.onboarding.detect import detect_setup_state
 from unknown_agent.onboarding.flow import OnboardingOptions, run_onboarding
+from unknown_agent.onboarding.panel import launch_setup
 from unknown_agent.providers.catalog import CATALOG, catalog_payload, resolve_entry
 from unknown_agent.providers.discovery import ProviderProbeError, fetch_models, validate_profile
 from unknown_agent.ui.console import output
@@ -103,13 +104,18 @@ def setup(
     name: str | None = typer.Option(None, "--as", help="Profile name to write (defaults to the provider key)."),
     skip_check: bool = typer.Option(False, "--skip-check", help="Do not validate the key over the network."),
     force: bool = typer.Option(False, "--force", help="Re-run setup even when the configuration is already healthy."),
+    classic: bool = typer.Option(False, "--classic", help="Use the plain prompt flow instead of the interactive panel."),
 ) -> None:
-    """Set up a provider and model - the first-run experience.
+    """Open the interactive setup panel: pick a provider, paste a key, pick a model.
+
+    With no flags this opens a full-screen panel - choose a provider from a list,
+    paste the key in a dialog, and press Enter; the key is validated and the model
+    catalog is fetched automatically, then you pick a model and it is saved.
 
     Examples:
-      ua setup                                   # interactive, recommended
-      ua setup --provider openrouter             # key pasted interactively
-      ua setup -p groq --api-key-env GROQ_API_KEY -m llama-3.3-70b-versatile
+      ua setup                                   # the guided panel (recommended)
+      ua setup --classic                         # plain prompts (no full-screen UI)
+      ua setup -p groq --api-key-env GROQ_API_KEY -m llama-3.3-70b-versatile   # scripted
     """
 
     runtime: Runtime = ctx.obj
@@ -137,11 +143,15 @@ def setup(
         skip_live_check=skip_check,
         store=_store(),
     )
-    result = asyncio.run(run_onboarding(runtime, options=options, prompter=runtime.prompter))
-    if result is None:
+    # One entry point: the interactive panel when a human is at a terminal, the
+    # scripted/guided flow otherwise.  No extra commands are ever required.
+    outcome = launch_setup(runtime, scripted=options, force_fallback=classic)
+    if not outcome.ok:
+        if runtime.is_machine:
+            runtime.emit_json(outcome.to_dict())
         raise typer.Exit(ExitCode.INTERRUPTED)
     if runtime.is_machine:
-        runtime.emit_json(result.to_dict())
+        runtime.emit_json(outcome.to_dict())
     raise typer.Exit(ExitCode.OK)
 
 

@@ -13,12 +13,35 @@ A captured transcript of the real screens lives in [`onboarding-preview.txt`](on
 
 ```bash
 pipx install unknown-agent        # or: pip install -e .
-ua                                # first run → onboarding → agent shell
+ua                                # first run → setup panel → agent shell
 ```
 
 After install, typing the command name is enough. If a provider is configured you land in
-the agent shell; if not, onboarding starts; if the config is broken you get a repair path
-that names the exact problem.
+the agent shell; if not, **the interactive setup panel opens automatically**; if the config
+is broken you get a repair path that names the exact problem.
+
+### The setup panel (`unknown_agent/tui/quicksetup.py`)
+
+The default configuration experience is a four-panel Textual app. No flags, no follow-up
+commands:
+
+| panel | what happens |
+| ----- | ------------ |
+| `ProviderScreen` | every catalog provider in a filterable selector; ↑↓ + Enter |
+| `ApiKeyScreen` | modal dialog, masked input; **Enter validates the key and, on success, fetches the model catalog** in one step |
+| `ModelScreen` | the fetched models, ranked tool-capable first, with context window / tools / vision / price; Enter selects |
+| `ReviewScreen` | one confirm, then the profile is written and the credential stored at `0600` |
+
+Failure handling is part of the UI: an invalid key keeps you in the dialog with the
+provider's reason in plain language and the field re-focused for a retry; a provider that
+accepts the key but cannot list models falls back to the curated catalog and says so;
+`Esc` at any point leaves the existing configuration untouched.
+
+`unknown_agent/onboarding/panel.py:launch_setup` is the single entry point every caller
+uses. It picks the panel when there is a real TTY and `textual` is importable, and the
+Rich prompt flow (`onboarding/flow.py`) for CI, `--json`, `--non-interactive`, piped
+stdin, or `ua setup --classic`. Any explicit flag (`--provider`, `--api-key-env`, …)
+routes to the scripted flow so automation is unchanged.
 
 Scripted installs skip the UI entirely:
 

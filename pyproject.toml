@@ -40,12 +40,15 @@ dependencies = [
   "PyYAML>=6.0",
   "tomli-w>=1.0",
   "tenacity>=9.0",
+  # The guided setup panel is the default configuration experience, so the TUI
+  # toolkit ships with the product instead of hiding behind an extra.
+  "textual>=0.85",
   "typing-extensions>=4.12",
 ]
 
 [project.optional-dependencies]
 browser = ["playwright>=1.47"]
-tui = ["textual>=0.85"]
+tui = ["textual>=0.85"]  # kept for compatibility; textual is now a core dependency
 dashboard = ["fastapi>=0.115", "uvicorn>=0.32", "websockets>=13.0"]
 keyring = ["keyring>=25.4"]
 mcp = ["mcp>=1.2"]

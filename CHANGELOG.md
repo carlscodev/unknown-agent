@@ -6,7 +6,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- **Setup is now a panel, not a command sequence.** `ua setup` opens an interactive
+  Textual UI: provider selector → masked API-key dialog → automatic key validation →
+  automatic model fetching from the provider's models endpoint → model selector →
+  review and save. Invalid keys are explained in the dialog with a retry instead of a
+  raw error, and nothing is written until the save step.
+- The panel is the **default path**: `ua`, `ua run`, `ua build`, `ua fix`, `ua plan` and
+  `ua ask` route into it automatically when no provider is configured, instead of
+  printing a hint about commands to memorise.
+- `textual` moved from an optional extra to a core dependency, because the setup panel
+  ships with the product.
+
 ### Added
+- `unknown_agent.tui.quicksetup` — the four-screen setup panel (`ProviderScreen`,
+  `ApiKeyScreen`, `ModelScreen`, `ReviewScreen`) plus `save_provider_choice`.
+- `unknown_agent.onboarding.panel.launch_setup` — one entry point that chooses the panel
+  or the Rich prompt fallback (CI, `--json`, no TTY, `ua setup --classic`).
+- `ua setup --classic` to opt out of the full-screen UI.
 - MCP subsystem: official SDK client (stdio/HTTP/SSE), trust ladder, tool
   bridge (`mcp.<server>.<tool>`), curated catalog, `ua mcp` management group.
 - Vision system: capability resolution with sources, image ingestion with an
