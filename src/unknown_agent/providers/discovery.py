@@ -106,7 +106,15 @@ def build_client(entry: ProviderEntry, *, api_key: str | None, base_url: str | N
             f"{entry.label} needs a base URL.",
             hint="Pass --base-url (for Azure: https://<resource>.openai.azure.com/openai/v1).",
         )
-    return httpx.AsyncClient(base_url=root, headers=headers, timeout=timeout)
+    # Separate, shorter *connect* budget: an endpoint with no route (firewall, DNS,
+    # black-holed gateway) must fail in seconds, not hold the whole read timeout.
+    # This is what makes `/setup` feel instant-broken instead of frozen when the
+    # provider is unreachable.
+    return httpx.AsyncClient(
+        base_url=root,
+        headers=headers,
+        timeout=httpx.Timeout(timeout, connect=min(8.0, timeout)),
+    )
 
 
 def normalize_effective_protocol(entry: ProviderEntry, compatibility: str | None) -> str:

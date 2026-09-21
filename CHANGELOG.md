@@ -6,6 +6,24 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.9] - 2026-09-21
+
+### Fixed — `/setup` no longer *feels* frozen when a gateway is slow or unreachable
+
+- `providers.discovery.build_client` now uses a separate, shorter **connect** budget
+  (`httpx.Timeout(timeout, connect=min(8, timeout))`).  An endpoint with no route
+  (firewall, DNS, black-holed gateway) now fails in seconds instead of holding the
+  whole read timeout — the difference between "instant, clear error" and "staring at
+  a spinner" when a provider is unreachable.
+- Setup caps shortened so a slow gateway degrades to an explanation and a fallback
+  instead of a long stall: credential check 25s→**15s**, model listing 20s→**8s**.
+  A live listing answers in well under a second; past the cap the panel falls back to
+  the catalog / manual entry and setup still completes.
+
+The panel was already non-blocking and cancellable since 1.1.7 (the loop stays alive
+and *cancel*/*Esc* always work); this release makes the wait itself short and the
+failure fast, so configuring a new provider never sits at "fetching the models …".
+
 ## [1.1.8] - 2026-09-21
 
 ### Added — the chat composer now behaves like a real chat input

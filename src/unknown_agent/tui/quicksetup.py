@@ -71,10 +71,14 @@ log = get_logger("tui.quicksetup")
 #: Without this the panel waited on the gateway forever: ``_set_busy(True)`` had
 #: already disabled every button and the input field, so a provider that stalled
 #: (unli.dev under no capacity) left the user with a frozen dialog and no way out.
-SETUP_VALIDATE_TIMEOUT_S = 25.0
+#: Kept generous enough for a slow-but-alive gateway, short enough that a dead one
+#: degrades to an explanation instead of a long stare.
+SETUP_VALIDATE_TIMEOUT_S = 15.0
 
-#: Model listing gets its own, shorter budget: it is a convenience, not a gate.
-SETUP_MODELS_TIMEOUT_S = 20.0
+#: Model listing gets its own, much shorter budget: it is a convenience, not a gate.
+#: A live listing answers in well under a second; if it cannot answer in 8s the panel
+#: falls back to the catalog / manual entry and the user finishes setup anyway.
+SETUP_MODELS_TIMEOUT_S = 8.0
 
 
 async def _compat_call(coro_factory):  # type: ignore[no-untyped-def]

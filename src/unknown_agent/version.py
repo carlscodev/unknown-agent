@@ -13,7 +13,7 @@ Versioning policy
 
 from __future__ import annotations
 
-__version__ = "1.1.8"
+__version__ = "1.1.9"
 
 #: ``<major>.<minor>`` release line, used for cache keys and migration targeting.
 VERSION_LINE = ".".join(__version__.split(".")[:2])
