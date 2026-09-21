@@ -18,16 +18,16 @@
 
 ```bash
 # 1. bump
-# edita src/unknown_agent/version.py: 1.1.1 -> 1.1.2 (o 1.2.0 si es feature)
+# edita src/unknown_agent/version.py: 1.1.1 -> 1.1.3 (o 1.2.0 si es feature)
 # 2. changelog (arriba de [Unreleased])
-#   ## [1.1.2] - 2026-09-22
+#   ## [1.1.3] - 2026-09-22
 #   ### Fixed/Added/Changed ...
 # 3. commit + tag + push
 git add src/unknown_agent/version.py CHANGELOG.md
-git commit -m "release: 1.1.2 - <qué hace>"
-git tag v1.1.2
+git commit -m "release: 1.1.3 - <qué hace>"
+git tag v1.1.3
 git push origin main
-git push origin v1.1.2
+git push origin v1.1.3
 ```
 
 Si el paso 1-3 no se hace, el fix existe en `main` pero **el usuario con `1.1.1` nunca lo recibe**.
@@ -47,7 +47,7 @@ read -rs GITHUB_TOKEN && export GITHUB_TOKEN   # pega el PAT fine-grained (conte
 git -c credential.helper='!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f' \
     push origin main
 git -c credential.helper='!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f' \
-    push origin v1.1.2
+    push origin v1.1.3
 unset GITHUB_TOKEN
 # Verifica que el remote quedó limpio:
 git remote -v  # debe mostrar https://github.com/klowerg/Unknown-Agent.git SIN token
@@ -75,26 +75,26 @@ ua upgrade --yes   # detecta modo (pipx/uv-tool/bootstrap/venv) y corre el coman
 
 ## 3. Comandos que el usuario debe tener aquí mismo (copiar/pegar)
 
-**Usuario en `1.1.0` o `1.1.1` → actualizar a `1.1.2` (o latest):**
+**Usuario en `1.1.0` o `1.1.1` → actualizar a `1.1.3` (o latest):**
 
 ```bash
 # pip / venv
-pip install --upgrade git+https://github.com/klowerg/Unknown-Agent.git@v1.1.2
+pip install --upgrade git+https://github.com/klowerg/Unknown-Agent.git@v1.1.3
 # o latest sin tag
 pip install --upgrade git+https://github.com/klowerg/Unknown-Agent.git
 
 # pipx
 pipx upgrade unknown-agent
 # si falla porque vino de git:
-pipx install --force git+https://github.com/klowerg/Unknown-Agent.git@v1.1.2
+pipx install --force git+https://github.com/klowerg/Unknown-Agent.git@v1.1.3
 
 # uv
 uv tool upgrade unknown-agent
 # o
-uv tool install --force git+https://github.com/klowerg/Unknown-Agent.git@v1.1.2
+uv tool install --force git+https://github.com/klowerg/Unknown-Agent.git@v1.1.3
 
 # nativo (auto-detecta tu modo)
-ua upgrade --check   # muestra 1.1.1 -> 1.1.2
+ua upgrade --check   # muestra 1.1.1 -> 1.1.3
 ua upgrade --yes
 
 # verificar
@@ -111,6 +111,8 @@ ua version -v
 - [ ] ¿El live puede venir vacío? Implementa fallback `live → catalog (known_model_ids) → manual (typed input)` en `quicksetup.ModelScreen` y `shell_app._available_models`.
 - [ ] ¿Header correcto? `build_client` debe elegir `Bearer` vs `x-api-key + anthropic-version`.
 - [ ] ¿`provider_status` y `health` propagan `compatibility`? Sino, el banner dirá “not compatible”.
+- [ ] ¿TUI `no agent attached` está arreglado? Verifica `TUIAppShell._ensure_runner`/`_diagnose_attachment`/`_build_chat_runner` y que `Hola` streamea vía `provider.stream` (SSE) con fallback a `complete`.
+- [ ] ¿`/setup` funciona dentro del TUI? Verifica `slash_matches`/`_on_composer_changed`/`_on_submit`/`invoke` (Worker vs coroutine) y `suspend` → `await run_setup_panel()` sin `to_thread`.
 - [ ] ¿Bumppeaste `version.py` + `CHANGELOG.md` + tag? Sino, el usuario no se actualiza.
 
 ---

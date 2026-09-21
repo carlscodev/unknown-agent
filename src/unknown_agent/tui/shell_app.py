@@ -278,6 +278,19 @@ class TUIAppShell(App[None]):
         #: Input.Changed does not immediately re-open the popup we just closed.
         self._suppress_suggestions = False
         self._session_info: dict[str, Any] = {"state": "idle", "mode": self.reasoning_mode_name()}
+        #: Last exception raised while trying to build a chat runner.  Surfaced in
+        #: diagnostics so “backend attach failed” is not conflated with “no provider”.
+        self._attach_error: str | None = None
+
+        # Auto-attach a chat runner if config already contains a valid provider/model.
+        # This is the fix for “no agent attached” when the TUI was launched without
+        # an explicit runner (cli/tui_command did not build one).  The shell now
+        # recovers on its own instead of staying UI-only until /setup is run.
+        try:
+            if self._runner is None and self.settings is not None:
+                self._ensure_runner()
+        except Exception:  # noqa: BLE001
+            log.debug("auto-attach at init failed", exc_info=True)
 
     @staticmethod
     def _configured_theme(settings: Any) -> str:
@@ -310,6 +323,13 @@ class TUIAppShell(App[None]):
         self.title = "unknown agent"
         self._apply_theme()
         self.provider_status.subscribe(self._on_provider_state)
+        # If settings were loaded after construction (or the init auto-attach raced
+        # with a not-yet-ready provider_status), give it one more try now.
+        try:
+            if self._runner is None:
+                self._ensure_runner()
+        except Exception:  # noqa: BLE001
+            log.debug("auto-attach at mount failed", exc_info=True)
         self._render_chrome()
         self._refresh_sidebar()
         self._greet()
@@ -415,6 +435,14 @@ class TUIAppShell(App[None]):
             self.query_one("#card-provider", ProviderCard).state = state
             if state.context_window:
                 self.usage.set_context_window(state.context_window)
+            # A health transition to “can_send” may mean the provider that was
+            # previously invalid is now usable (user ran /setup, network came
+            # back).  If the shell still lacks a runner, attach one now.
+            try:
+                if self._runner is None and state.can_send:
+                    self._ensure_runner()
+            except Exception:  # noqa: BLE001
+                log.debug("auto-attach on provider state failed", exc_info=True)
             self._render_chrome()
             self._render_notice(state)
 
@@ -734,7 +762,21 @@ class TUIAppShell(App[None]):
             return
         with ErrorBoundary(self, region=command.title.lower()):
             result = handler()
-            if asyncio.iscoroutine(result):
+            # ``handler`` may be:
+            # * a ``@work``-decorated action  → returns ``Worker`` (already scheduled)
+            # * a plain ``async def``          → returns a coroutine that we must schedule
+            # * a sync function               → returns None / value
+            # The previous code only handled coroutines, so a ``Worker`` was silently
+            # ignored and a slash command that returned a coroutine was not always
+            # scheduled in tests.  Handle both.
+            try:
+                from textual.worker import Worker as _TextualWorker
+
+                if isinstance(result, _TextualWorker):
+                    return
+            except Exception:  # noqa: BLE001
+                pass
+            if asyncio.iscoroutine(result) or isinstance(result, Awaitable):
                 self.run_worker(result, group="command", exclusive=False)
 
     # ------------------------------------------------------------------ #
@@ -766,6 +808,12 @@ class TUIAppShell(App[None]):
             return
         self._persist(model=chosen)
         self.provider_status.note_switch(model=chosen)
+        self._attach_error = None
+        self._runner = None
+        try:
+            self._ensure_runner()
+        except Exception:  # noqa: BLE001
+            pass
         self.note(f"model → {chosen}", tone="accent")
         self._refresh_sidebar()
         self._resolve_health()
@@ -784,6 +832,12 @@ class TUIAppShell(App[None]):
             return
         self._persist(provider=chosen)
         self.provider_status.note_switch(provider=chosen)
+        self._attach_error = None
+        self._runner = None
+        try:
+            self._ensure_runner()
+        except Exception:  # noqa: BLE001
+            pass
         self.note(f"provider → {chosen}", tone="accent")
         self._refresh_sidebar()
         self._resolve_health()
@@ -812,17 +866,41 @@ class TUIAppShell(App[None]):
 
         The panel is a Textual app in its own right, so the shell suspends for its
         duration — two apps cannot share one terminal — and resumes afterwards.
+
+        The previous implementation used ``asyncio.to_thread(asyncio.run(...))`` which
+        runs the second app in a different thread while the first is suspended in the
+        main thread.  That is not how Textual's ``suspend`` is intended to be used
+        and it fails in headless tests (``App.suspend is not supported``) and can
+        race in a real terminal.  The correct pattern is ``with self.suspend(): await
+        run_setup_panel()`` in the same loop — the suspended app releases the
+        terminal and the new app takes it over directly.
         """
 
         self.note("opening provider setup…")
         with ErrorBoundary(self, region="setup"):
             from unknown_agent.tui.quicksetup import run_setup_panel
 
-            def _run() -> Any:
-                return asyncio.run(run_setup_panel())
-
-            with self.suspend():
-                result = await asyncio.to_thread(_run)
+            result: Any = None
+            try:
+                # Preferred path: suspend the shell and run the setup panel in the
+                # same event loop.  This is what Textual documents and what works
+                # under ``run_test`` when suspend is supported.
+                with self.suspend():
+                    result = await run_setup_panel()
+            except Exception as exc:  # noqa: BLE001 - suspend not supported in headless
+                message = str(exc).lower()
+                if "suspend" in message or "not supported" in message or isinstance(exc, NotImplementedError):
+                    # Headless / test environment: run without suspend.  The panel
+                    # will still render in the test harness, it just won't suspend.
+                    log.debug("suspend not supported, running setup without suspend: %s", exc)
+                    try:
+                        result = await run_setup_panel()
+                    except Exception as inner:  # noqa: BLE001
+                        self.report_problem("setup", inner)
+                        return
+                else:
+                    self.report_problem("setup", exc)
+                    return
 
             if result is not None and not getattr(result, "cancelled", True):
                 self._reload_settings()
@@ -830,6 +908,15 @@ class TUIAppShell(App[None]):
                 self.provider_status.note_switch(
                     provider=getattr(result, "provider", ""), model=getattr(result, "model", "")
                 )
+                # A newly configured provider/model must immediately become a live
+                # backend — do not wait for the next health tick or the next user
+                # message.  This is what makes “/setup → Hola” work without a restart.
+                self._attach_error = None
+                self._runner = None
+                try:
+                    self._ensure_runner()
+                except Exception:  # noqa: BLE001
+                    pass
                 self.note(f"configured {getattr(result, 'provider', '')}", tone="ok")
                 self._refresh_sidebar()
                 self._resolve_health()
@@ -839,6 +926,11 @@ class TUIAppShell(App[None]):
     @safe_action("retry")
     def action_retry_provider(self) -> None:
         self.note("re-checking the provider…")
+        self._attach_error = None
+        try:
+            self._ensure_runner()
+        except Exception:  # noqa: BLE001
+            pass
         self._resolve_health()
 
     @safe_action("status")
@@ -937,13 +1029,60 @@ class TUIAppShell(App[None]):
         self.write(prompt)
         self.write(Text(""))
 
+        # Lazy recovery: the user may have typed while health was still
+        # validating, or the shell was started without a runner.  Try once to
+        # attach before we declare the session UI-only.
         if self._runner is None:
-            self.note("no agent attached — this is a UI-only session", tone="warn")
+            try:
+                self._ensure_runner()
+            except Exception:  # noqa: BLE001
+                log.debug("lazy attach in run_task failed", exc_info=True)
+
+        if self._runner is None:
+            can, reason, details = self._diagnose_attachment()
+            # No runner and we cannot attach — show a precise, actionable note
+            # instead of the old generic yellow warning.
+            hint = details.get("hint") or ""
+            provider = details.get("provider") or "—"
+            model = details.get("model") or "—"
+            status = details.get("status") or ""
+            # Build a compact diagnostic line: reason + what we tried + how to fix.
+            msg = reason or "no agent attached"
+            # Include provider/model that was tried so the user sees what failed.
+            context = f" (provider {provider} · model {model})" if provider != "—" or model != "—" else ""
+            remedies: list[str] = []
+            if "no provider" in reason or "no default provider" in reason:
+                remedies.append("/setup")
+                remedies.append("f3 provider")
+            elif "no default model" in reason:
+                remedies.append("f2 model")
+                remedies.append("/setup")
+            elif status in {"invalid_credentials", "credits_exhausted", "offline"} or not can:
+                # Health-reported failure: suggest retry + setup
+                remedies.append("ctrl+r retry")
+                remedies.append("/setup")
+                if "invalid" in reason.lower() or "credential" in reason.lower():
+                    remedies.append("check API key")
+            else:
+                remedies.append("ctrl+r retry")
+                remedies.append("/setup")
+            remedy_str = "  →  ".join(remedies)
+            if hint and hint not in remedy_str:
+                remedy_str = f"{hint}  →  {remedy_str}" if remedy_str else hint
+            self.note(f"{msg}{context} — {remedy_str}" if remedy_str else f"{msg}{context}", tone="warn")
             return
 
         state = self.provider_status.state
         if not state.can_send:
-            self.note(f"{state.message or 'no provider configured'} — press f3, or /setup", tone="warn")
+            # Even with a runner, provider health says we cannot send (e.g. key
+            # expired mid-session).  Show provider's own message + hint rather
+            # than “no agent attached”.
+            msg = getattr(state, "message", "") or "provider cannot be used right now"
+            hint = getattr(state, "hint", "") or "press ctrl+r to retry or /setup to reconfigure"
+            provider_label = getattr(state, "provider_label", "") or getattr(state, "provider", "")
+            model = getattr(state, "model", "")
+            context = f" [{provider_label} · {model}]" if provider_label else ""
+            self.note(f"{msg}{context} — {hint}", tone="warn")
             return
 
         self.busy = True
@@ -1008,6 +1147,268 @@ class TUIAppShell(App[None]):
         body.append(f"{GLYPH['bullet']} ", style=tokens.ok)
         body.append(str(getattr(result, "output", None) or getattr(result, "summary", None) or result), style=tokens.text)
         return body
+
+    # ------------------------------------------------------------------ #
+    # configuration
+    # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------ #
+    # agent attachment — the “no agent attached” root cause lives here
+    # ------------------------------------------------------------------ #
+    def _diagnose_attachment(self) -> tuple[bool, str, dict[str, str]]:
+        """Precise diagnosis of why a chat cannot run.
+
+        Returns ``(can_attach, reason, details)`` where ``reason`` is a short
+        human sentence and ``details`` carries the tried provider/model and the
+        underlying error.  This is what the UI shows instead of the vague
+        “no agent attached — this is a UI-only session”.
+
+        The product previously conflated four distinct states:
+
+        * provider configured  — a profile exists in ``settings.providers``
+        * provider available   — health says the credential works
+        * model selected       — ``profile.model`` is set
+        * agent attached       — a live ``_runner`` callable exists
+
+        A valid config can still leave ``_runner is None`` when the shell was
+        launched without a runner (``tui_command`` never built one) or when the
+        provider failed to instantiate.
+        """
+
+        state = getattr(self.provider_status, "state", None)
+        profile = self._profile()
+        profile_name = active_profile_name(self.settings) if self.settings is not None else ""
+        tried_provider = getattr(state, "provider", "—") if state is not None else profile_name or "—"
+        tried_model = getattr(state, "model", "—") if state is not None else (getattr(profile, "model", "") if profile is not None else "—")
+        tried_label = getattr(state, "provider_label", "") if state is not None else ""
+
+        # 1. No settings at all
+        if self.settings is None:
+            return False, "no settings loaded", {"provider": tried_provider, "model": tried_model, "hint": "Run /setup"}
+        providers = getattr(self.settings, "providers", {}) or {}
+        if not providers:
+            return False, "no provider configured", {"provider": tried_provider, "model": tried_model, "hint": "Press /setup or f3 to add one"}
+        # 2. No active profile
+        if not profile_name or profile is None:
+            return False, "no default provider selected", {"provider": tried_provider, "model": tried_model, "hint": "Press f3 to pick a provider or /setup to create one"}
+        # 3. No model
+        model = getattr(profile, "model", "") or (getattr(state, "model", "") if state is not None else "")
+        if not model or model == "—":
+            return False, "no default model selected", {"provider": tried_provider or profile_name, "model": "—", "hint": "Press f2 to pick a model or re-run /setup"}
+        # 4. Provider health says it cannot send
+        if state is not None and not getattr(state, "can_send", True):
+            msg = getattr(state, "message", "") or "provider cannot be used"
+            hint = getattr(state, "hint", "") or "Press ctrl+r to retry, /setup to reconfigure"
+            return False, msg, {"provider": tried_label or tried_provider, "model": tried_model, "hint": hint, "status": getattr(state, "status", "")}
+        # 5. Runner attach previously failed — surface the actual build error so
+        #    “backend attach failed” is not conflated with “no agent attached”.
+        if self._runner is None and getattr(self, "_attach_error", None):
+            return False, f"backend attach failed: {self._attach_error}", {"provider": tried_label or tried_provider, "model": tried_model, "hint": "Press ctrl+r to retry or /setup to reconfigure", "status": "attach_failed"}
+        # 6. Runner not attached even though provider/model look ok — this is the
+        #    bug the user reported.  It happens because ``tui_command`` launched
+        #    ``TUIAppShell`` without a runner.  We can still recover by building a
+        #    direct provider runner on demand.
+        if self._runner is None:
+            # We *can* attach — the caller should try to build a runner.  Distinguish
+            # “can attach” from “already attached” by returning True but with a
+            # special reason.
+            return True, "runner not yet attached but provider/model are valid — will attach on demand", {"provider": tried_label or tried_provider, "model": tried_model}
+        return True, "", {"provider": tried_label or tried_provider, "model": tried_model}
+
+    def _build_chat_runner(self) -> RunnerCallable | None:
+        """Build a minimal chat runner from the current settings.
+
+        This is the fallback that makes ``Hola`` work when the shell was launched
+        without an explicit ``_runner``.  It directly uses the configured provider
+        to answer, with streaming if the provider supports it.  No LiteLLM is
+        involved — it goes through ``build_provider`` and the provider's own
+        ``stream``/``complete`` methods, so the correct wire format (OpenAI SSE
+        vs Anthropic SSE vs Ollama) is used automatically.
+        """
+
+        profile = self._profile()
+        if profile is None:
+            return None
+        profile_name = active_profile_name(self.settings) if self.settings is not None else "default"
+        # Capture current profile/model at build time, but re-resolve provider on
+        # each call so a later ``/setup`` or ``f3`` takes effect immediately.
+        def _resolve_provider():  # type: ignore[no-untyped-def]
+            try:
+                from unknown_agent.providers.registry import build_provider
+
+                # Re-read settings in case it changed since runner was built
+                current_profile = self._profile()
+                current_name = active_profile_name(self.settings) if self.settings is not None else profile_name
+                if current_profile is None:
+                    current_profile = profile
+                    current_name = profile_name
+                return build_provider(current_profile, name=current_name or "default")
+            except Exception as exc:  # noqa: BLE001
+                log.debug("chat runner: could not build provider: %s", exc)
+                # Remember the root cause so diagnostics can surface “backend attach
+                # failed” instead of the generic “no provider available”.
+                try:
+                    self._attach_error = str(exc)[:250]  # type: ignore[attr-defined]
+                except Exception:
+                    pass
+                return None
+
+        async def _chat_runner(task: str, hooks: Any) -> Any:  # type: ignore[no-untyped-def]
+            # Simple prompt classification: greetings like "Hola" must be normal
+            # chat, not build/planning.  We treat any short message without
+            # build verbs as chat.  The full ``Runner`` would do heavier
+            # analysis, but for the shell's direct chat path we just need to
+            # answer normally.
+            from unknown_agent.core.models import Message
+            from unknown_agent.providers.base import ModelRequest
+
+            provider = _resolve_provider()
+            if provider is None:
+                raise RuntimeError("no provider available — run /setup")
+            # Build request — single user turn, stream if the provider advertises it
+            current_profile = self._profile()
+            model = getattr(current_profile, "model", provider.model) if current_profile is not None else provider.model
+            temperature = float(getattr(current_profile, "temperature", provider.temperature) if current_profile is not None else provider.temperature)
+            max_tokens = int(getattr(current_profile, "max_output_tokens", provider.max_output_tokens) if current_profile is not None else provider.max_output_tokens)
+            request = ModelRequest(
+                messages=[Message(role="user", content=task)],
+                temperature=temperature,
+                max_output_tokens=max_tokens,
+            )
+            # ``provider.model`` may differ from the profile's model; honor the
+            # profile.
+            original_model = provider.model
+            if model:
+                provider.model = model
+            try:
+                # Prefer streaming when available — it is SSE for OpenAI/Anthropic
+                # and chunked JSON for Ollama, handled inside each provider.
+                if getattr(provider, "supports_streaming", False):
+                    full = ""
+                    usage = None
+                    finish = None
+                    async for chunk in provider.stream(request):
+                        if chunk.error:
+                            raise RuntimeError(chunk.error)
+                        if chunk.delta:
+                            full += chunk.delta
+                            # Stream incrementally via hooks so the transcript
+                            # updates live.  ``_hooks().on_message`` writes dim text.
+                            try:
+                                cb = getattr(hooks, "on_message", None)
+                                if callable(cb):
+                                    cb(chunk.delta)
+                            except Exception:  # noqa: BLE001
+                                pass
+                        if chunk.usage is not None:
+                            usage = chunk.usage
+                        if chunk.finish_reason is not None:
+                            finish = chunk.finish_reason
+                    # Record usage for the dashboard
+                    from types import SimpleNamespace
+
+                    return SimpleNamespace(output=full, content=full, usage=usage, finish_reason=finish, model=model)
+                # Fallback to single complete
+                response = await provider.complete(request)
+                if response.error:
+                    raise RuntimeError(response.error)
+                from types import SimpleNamespace
+
+                return SimpleNamespace(output=response.content, content=response.content, usage=response.usage, finish_reason=response.finish_reason, model=model, raw=response.raw)
+            finally:
+                provider.model = original_model
+                try:
+                    await provider.aclose()
+                except Exception:  # noqa: BLE001
+                    pass
+
+        # Eagerly validate that we can actually build a provider with the current
+        # config.  Without this, ``_ensure_runner`` would report success even when
+        # the underlying ``build_provider`` will fail on the first real call (e.g.
+        # missing API key, bad base_url).  That would make “Hola” hit the generic
+        # agent-run error instead of the precise “backend attach failed” diagnostic.
+        try:
+            probe = _resolve_provider()
+            if probe is None:
+                # _resolve_provider already stored _attach_error
+                if not getattr(self, "_attach_error", None):
+                    self._attach_error = "could not build provider — check /setup"
+                return None
+            # Probe succeeded — close it if possible (best effort, sync fallback)
+            try:
+                # Most providers expose an async ``aclose``; we can't await here, so
+                # schedule it if an event loop is running, otherwise ignore.
+                import asyncio as _asyncio
+
+                if _asyncio.get_event_loop().is_running():
+                    _asyncio.create_task(probe.aclose())  # type: ignore[attr-defined]
+                else:
+                    # No running loop — provider will be re-created on first use.
+                    pass
+            except Exception:
+                pass
+        except Exception as exc:  # noqa: BLE001
+            self._attach_error = str(exc)[:250]
+            return None
+
+        return _chat_runner
+
+    def _ensure_runner(self) -> bool:
+        """Ensure ``self._runner`` exists if a valid provider/model is configured.
+
+        Called at startup, after ``/setup``, and lazily before the first chat.
+        Returns True if a runner is now attached.
+        """
+
+        if self._runner is not None:
+            self._attach_error = None
+            return True
+        can_attach, reason, details = self._diagnose_attachment()
+        # ``can_attach`` True with “runner not yet attached” means we should try.
+        if not can_attach:
+            # Only attach when the diagnosis says we *can* (provider/model valid).
+            # Otherwise leave ``_runner`` as None and let ``run_task`` show the
+            # precise reason.
+            if "runner not yet attached" not in reason:
+                return False
+            # If the only reason we cannot attach is a previous attach failure,
+            # we *should* retry — the user may have fixed the config via /setup.
+            if "backend attach failed" in reason and getattr(self, "_attach_error", None):
+                pass  # fall through to retry
+            else:
+                # For the “will attach on demand” case, fall through to build.
+                if "will attach on demand" not in reason:
+                    return False
+        try:
+            runner = self._build_chat_runner()
+            if runner is not None:
+                self._runner = runner
+                self._attach_error = None
+                log.info("chat runner attached for %s/%s", details.get("provider"), details.get("model"))
+                return True
+            else:
+                if not getattr(self, "_attach_error", None):
+                    self._attach_error = "could not build provider — check /setup"
+        except Exception as exc:  # noqa: BLE001
+            self._attach_error = str(exc)[:200]
+            log.debug("could not attach runner: %s", exc)
+        return self._runner is not None
+
+    @work(exclusive=True, group="modal")
+    @safe_action("attach agent")
+    async def action_attach_agent(self) -> None:
+        """Manual recovery: try to attach a runner and re-check provider."""
+
+        self.note("attaching agent…")
+        self._reload_settings()
+        self.provider_status.settings = self.settings
+        attached = self._ensure_runner()
+        self._resolve_health()
+        await asyncio.sleep(0.1)
+        if attached and self._runner is not None:
+            self.note(f"agent attached — {self.provider_status.state.provider_label or self.provider_status.state.provider} · {self.provider_status.state.model}", tone="ok")
+        else:
+            can, reason, details = self._diagnose_attachment()
+            self.note(f"still detached: {reason} — {details.get('hint','press /setup')}", tone="warn")
 
     # ------------------------------------------------------------------ #
     # configuration
@@ -1167,9 +1568,22 @@ async def run_app_shell(
     headless: bool = False,
     resolve_on_mount: bool = True,
 ) -> TUIAppShell:
-    """Launch the shell. Never raises for provider reasons — that is the contract."""
+    """Launch the shell. Never raises for provider reasons — that is the contract.
+
+    When ``runner`` is ``None`` but ``settings`` contains a valid provider/model,
+    the ``TUIAppShell`` itself will auto-attach a streaming chat runner on
+    construction (``_ensure_runner``).  This function also attempts an eager
+    attach here so that callers inspecting ``app._runner`` immediately after
+    construction — e.g. tests running in ``headless`` mode — see a live backend
+    without waiting for ``on_mount``.
+    """
 
     app = TUIAppShell(settings=settings, runner=runner, first_task=first_task, resolve_on_mount=resolve_on_mount)
+    if app._runner is None and settings is not None:
+        try:
+            app._ensure_runner()
+        except Exception:  # noqa: BLE001
+            pass
     if headless:
         async with app.run_test(size=(150, 44)) as pilot:
             await pilot.pause()
