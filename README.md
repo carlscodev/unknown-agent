@@ -148,6 +148,21 @@ ua browser open http://localhost:3000         # real Chromium session, screensho
 ua runs show --last --events                  # full audit trail of the last run
 ```
 
+## Web control panel
+
+One command serves a browser dashboard (Vue 3 frontend, FastAPI + WebSocket backend)
+with the terminal's design language: streaming chat, `/` command palette, provider
+and model switching, device management and token rotation.
+
+```bash
+ua web                      # prints the access token, serves on :8787
+ua approve device 123456    # pair a browser that shows code 123456
+ua web --show-token         # reprint the token later
+```
+
+Login accepts the token, or a browser can request access and show a 6-digit code the
+terminal approves — the handshake works while the server is running.
+
 ## Command surface
 
 ```

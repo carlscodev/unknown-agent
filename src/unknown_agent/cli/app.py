@@ -257,6 +257,7 @@ def _register_commands() -> None:
         tools,
         verify,
         vision_cmd,
+        web as web_cmd,
     )
 
     # -- agent (top level, most used) -------------------------------------
@@ -269,6 +270,13 @@ def _register_commands() -> None:
     # -- onboarding, providers, models (first-run experience) --------------
     app.command("setup", rich_help_panel="Setup")(providers_cmd.setup)
     app.command("onboard", rich_help_panel="Setup", hidden=True)(providers_cmd.setup)
+    app.command("web", rich_help_panel="Setup")(web_cmd.web_command)
+    app.add_typer(
+        web_cmd.approve_app,
+        name="approve",
+        rich_help_panel="Setup",
+        help=web_cmd.approve_app.info.help,
+    )
     app.add_typer(providers_cmd.app, name="providers", rich_help_panel="Setup", help=providers_cmd.app.info.help)
     app.add_typer(providers_cmd.models_app, name="models", rich_help_panel="Setup", help=providers_cmd.models_app.info.help)
     app.add_typer(

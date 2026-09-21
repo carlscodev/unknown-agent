@@ -43,6 +43,11 @@ dependencies = [
   # The guided setup panel is the default configuration experience, so the TUI
   # toolkit ships with the product instead of hiding behind an extra.
   "textual>=0.85",
+  # The browser control panel (`ua web`) is a first-class surface: FastAPI serves
+  # the API plus the built Vue 3 app, uvicorn runs it, websockets backs live chat.
+  "fastapi>=0.115",
+  "uvicorn>=0.32",
+  "websockets>=13.0",
   "typing-extensions>=4.12",
 ]
 

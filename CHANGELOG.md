@@ -6,6 +6,44 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.0] - 2026-09-21
+
+### Added — browser control panel (`ua web`)
+
+A full web dashboard for the agent, OpenClaw-style but in this project's own design
+language: the terminal's exact colour ramp and single slate-blue accent, reworked as a
+minimalist premium browser UI. **No emoji anywhere in the interface.**
+
+- **One command**: `ua web` creates the owner token on first run, prints it, and
+  serves the panel (Vue 3 + Vite build, FastAPI + WebSocket backend) on
+  `http://<host>:8787`.  No other setup step.
+- **Two ways in**: paste the terminal-generated token, or *device pairing* — the
+  browser shows a 6-digit code, the terminal runs `ua approve device <code>`, and the
+  browser walks in on its next poll.  The handshake travels through the shared auth
+  file (`web_auth.json`, 0600), so approval works while the server runs.
+- **Advanced chat input**: streaming answers over WebSocket, `/` command palette with
+  keyboard navigation (`/help /status /providers /provider <n> /models /model <id>
+  /clear`), prompt history on arrow keys with draft restore, Esc clears — the same
+  composer behaviours the TUI got in 1.1.8.
+- **Everything clickable**: switch provider profile and model, inspect status, list
+  and revoke paired devices, rotate the access token (shown once), sign out.  Owner
+  vs device roles are enforced server-side.
+- **Real runtime, shared config**: the panel resolves the active provider from the
+  same `config.toml` the CLI/TUI use and streams through the provider's own adapter,
+  so a `/model` change in the browser takes effect in the terminal too.
+
+### Security
+
+- Constant-time token compare, HttpOnly session cookies, 0600 auth file, in-memory
+  rate limiting on login/pairing, token rotation invalidates owner sessions, device
+  revocation kills live sessions.
+
+### Tests
+
+- `tests/test_web_panel.py` — 10 tests: cross-process pairing handshake, rotation,
+  slash commands, provider error surfacing, streamed chat, WebSocket, SPA serving.
+- Live-checked against `api.unli.dev`: streamed answer end-to-end over the socket.
+
 ## [1.1.9] - 2026-09-21
 
 ### Fixed — `/setup` no longer *feels* frozen when a gateway is slow or unreachable

@@ -34,3 +34,7 @@ htmlcov/
 .vscode/
 .DS_Store
 Thumbs.db
+
+# Frontend toolchain (built assets ship from src/unknown_agent/web/static)
+node_modules/
+web/frontend/dist/
