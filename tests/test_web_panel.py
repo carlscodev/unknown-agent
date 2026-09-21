@@ -174,7 +174,17 @@ async def test_chat_slash_commands(env) -> None:
 
         r = await c.get("/api/commands")
         names = [c_["name"] for c_ in r.json()]
-        assert {"help", "model", "clear"} <= set(names)
+        assert {"help", "model", "clear", "pack"} <= set(names)
+
+
+async def test_chat_pack_lists_default_skills(env) -> None:
+    """The web chat runs with the same skill pack as the CLI/TUI agent."""
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post("/api/chat", json={"text": "/pack"})
+        content = r.json()["content"]
+        assert content.startswith("packs:")
+        assert "- " in content  # at least one builtin skill from the default pack
 
 
 async def test_chat_surfaces_real_provider_error(env) -> None:

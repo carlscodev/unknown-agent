@@ -117,6 +117,16 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         name = active_profile_name(settings)
         return name, settings.providers.get(name)
 
+    def _skill_set(settings: Settings) -> Any:
+        """The resolved skill pack — the same one the CLI/TUI agent runs with."""
+        try:
+            from unknown_agent.skills.loader import resolve_skills
+
+            return resolve_skills(settings, user_dir=paths.user_skills_dir)
+        except Exception:
+            log.debug("web: skill pack resolve failed", exc_info=True)
+            return None
+
     def _provider_view(settings: Settings) -> dict[str, Any]:
         active_name, active = _profile_pair(settings)
         return {
@@ -153,6 +163,7 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             rows = [
                 "/help — this list",
                 "/status — provider, model, version",
+                "/pack — active skill pack and its skills",
                 "/providers — list configured profiles",
                 "/provider <name> — switch active profile",
                 "/models — list models the active provider offers",
@@ -160,6 +171,14 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
                 "/clear — forget this conversation",
             ]
             content = "\n".join(rows)
+        elif name == "pack":
+            skillset = _skill_set(settings)
+            if skillset is None or not skillset.skills:
+                content = "skill pack disabled or empty (check [skills] pack in config)"
+            else:
+                rows = [f"packs: {', '.join(skillset.packs) or 'default'}"]
+                rows += [f"  - {s.id}" for s in skillset.skills]
+                content = "\n".join(rows)
         elif name == "status":
             view = _provider_view(settings)
             content = (
@@ -242,7 +261,18 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
 
         stored = history.setdefault(sid, [])
         stored.append({"role": "user", "content": text})
-        messages = [Message(role="system", content=CHAT_SYSTEM)]
+        # The chat runs with the product's skill pack: the same craft guidance the
+        # CLI/TUI agent receives, budgeted for this task.
+        system = CHAT_SYSTEM
+        skillset = _skill_set(settings)
+        if skillset is not None:
+            try:
+                guidance = skillset.prompt_section(task=text)
+            except Exception:
+                guidance = ""
+            if guidance:
+                system = f"{CHAT_SYSTEM}\n\n{guidance}"
+        messages = [Message(role="system", content=system)]
         messages += [Message(role=m["role"], content=m["content"]) for m in stored[-HISTORY_LIMIT:]]
         model = getattr(profile, "model", "") or provider.model
         request = ModelRequest(
@@ -358,6 +388,7 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             [
                 {"name": "help", "usage": "/help", "description": "List panel commands"},
                 {"name": "status", "usage": "/status", "description": "Provider, model, version"},
+                {"name": "pack", "usage": "/pack", "description": "Active skill pack"},
                 {"name": "providers", "usage": "/providers", "description": "Configured profiles"},
                 {"name": "provider", "usage": "/provider <name>", "description": "Switch profile"},
                 {"name": "models", "usage": "/models", "description": "Models offered live"},

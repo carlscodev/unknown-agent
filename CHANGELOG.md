@@ -6,6 +6,17 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.2.1] - 2026-09-21
+
+### Added — the web chat runs with the skill pack
+
+- Web chat now answers with the product's **skill pack** attached: the same curated
+  craft guidance the CLI/TUI agent receives (`resolve_skills` + `prompt_section`,
+  budgeted per task), so "use the pack" holds in the browser too.
+- New `/pack` command (and palette entry) lists the active packs and their skills.
+
+Suite: 688 passed, 0 failed.
+
 ## [1.2.0] - 2026-09-21
 
 ### Added — browser control panel (`ua web`)
