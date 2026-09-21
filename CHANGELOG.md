@@ -4,16 +4,6 @@ All notable changes to Unknown Agent are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project adheres
 to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [1.1.1] - 2026-09-21
-
-### Fixed
-- **UNLI (`https://api.unli.dev/v1`) was unusable: “no agents” and “provider is not compatible with OpenAI”.** Root causes were a parser that missed `capabilities.limits.supports` / `max_context_window_tokens`, a header mismatch (`Bearer` vs `x-api-key`), an empty-list blocking path, and re-inference of compatibility from `type` only in `provider_status`/`health`/`registry`/`shell`. Added `providers/compatibility.py` (`openai`/`anthropic`/`auto`), made `discovery.build_client` / `fetch_models` / `validate_credential` / `_probe_completion` compatibility-aware (auto retries `openai`→`anthropic` on 404/405), fixed UNLI payload parsing, added `resolve_entry_for` with `extra.compatibility`, and threaded compatibility through `health`, `provider_status`, and `shell_app._available_models` with a `live → catalog (auto/unli-auto) → manual (typed input)` fallback so the selector is never empty.
-- Generic custom OpenAI-compatible gateways are now first-class: the setup panel always offers “➕ Add custom endpoint”, validates `https://` URLs, collects display name + explicit API compatibility, and fabricates a `ProviderEntry` with the correct `protocol`/`model_listing`; the typed model input accepts any id when live listing is unavailable.
-
-### Added
-- `providers/compatibility.py` — single source for OpenAI/Anthropic routing.
-- **Improved TUI for custom providers:** `quicksetup.CustomEndpointScreen` + typed model id, `CompatibilityScreen`, `ModelScreen` manual source, `ModelSelector` manual caption, and tolerant `_safe_*` wrappers so mocked tests keep passing.
-
 ## [Unreleased]
 
 ### Fixed
@@ -61,6 +51,21 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Only implemented shortcuts are bound and shown; nothing unfinished is exposed.
 - `tui/palette.py` was replaced by `tui/commands.py` + `tui/screens.py`.
 - The `settings` test fixture moved to `tests/conftest.py`.
+
+## [1.1.2] - 2026-09-21
+
+### Added
+- **AGENTS.md — guía para agentes.** Regla de oro: nunca dejar cambios sin bump de `src/unknown_agent/version.py` + `CHANGELOG.md` + tag `vX.Y.Z` (es lo que hace que `ua upgrade --check` / `ua version` detecten el update). Incluye checklist de release, comandos copy/paste para `pip`/`pipx`/`uv`/`ua upgrade`, flujo seguro de PAT sin token en disco (`credential.helper` efímero), verificación `SHA256SUMS`, checklist UNLI/custom-provider, y política de placeholders `API_TOKEN:` / `KEY:`.
+
+## [1.1.1] - 2026-09-21
+
+### Fixed
+- **UNLI (`https://api.unli.dev/v1`) was unusable: “no agents” and “provider is not compatible with OpenAI”.** Root causes were a parser that missed `capabilities.limits.supports` / `max_context_window_tokens`, a header mismatch (`Bearer` vs `x-api-key`), an empty-list blocking path, and re-inference of compatibility from `type` only in `provider_status`/`health`/`registry`/`shell`. Added `providers/compatibility.py` (`openai`/`anthropic`/`auto`), made `discovery.build_client` / `fetch_models` / `validate_credential` / `_probe_completion` compatibility-aware (auto retries `openai`→`anthropic` on 404/405), fixed UNLI payload parsing, added `resolve_entry_for` with `extra.compatibility`, and threaded compatibility through `health`, `provider_status`, and `shell_app._available_models` with a `live → catalog (auto/unli-auto) → manual (typed input)` fallback so the selector is never empty.
+- Generic custom OpenAI-compatible gateways are now first-class: the setup panel always offers “➕ Add custom endpoint”, validates `https://` URLs, collects display name + explicit API compatibility, and fabricates a `ProviderEntry` with the correct `protocol`/`model_listing`; the typed model input accepts any id when live listing is unavailable.
+
+### Added
+- `providers/compatibility.py` — single source for OpenAI/Anthropic routing.
+- **Improved TUI for custom providers:** `quicksetup.CustomEndpointScreen` + typed model id, `CompatibilityScreen`, `ModelScreen` manual source, `ModelSelector` manual caption, and tolerant `_safe_*` wrappers so mocked tests keep passing.
 
 ## [1.1.0] - 2026-09-20
 
