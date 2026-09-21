@@ -6,6 +6,100 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.6] - 2026-09-21
+
+### Fixed — Build artifacts were dumped as raw chat; streaming & code were unreadable on narrow
+
+**1) Artifact-first routing (the `create a landing page` problem)**
+
+- Previously, asking for a landing page / app / website / script / component caused the
+  LLM to dump the entire generated project as raw code into the chat. No folder or
+  HTML/CSS file was created — the user had to copy-paste a huge block.
+- **Routing now:** `prompts/system.BUILD_OUTPUT_POLICY` is injected into every system
+  prompt (`build_system_prompt` appends it before `OUTPUT_CONTRACT`) and explicitly
+  orders: *landing page → folder + at minimum HTML + CSS/JS/assets via `write_file` /
+  `apply_patch`*, then a 4-7 line chat summary (folder, files, entry file, how to
+  open). Three cases are distinguished: conversational vs small inline example vs
+  real artifact. Long source `>40 lines / >1500 chars` must be written to disk and
+  the chat shows only a preview + `full file written to <path>`.
+- `TUIAppShell._format_result` was rewritten to be **artifact-aware**: if the
+  result carries `files_changed` (the full agent loop) it renders a success header
+  + file list instead of re-dumping code; if the LLM still returns a huge HTML
+  block as chat, the chat fallback in `_build_chat_runner` **auto-persists** it
+  to `landing/index.html` (or `landing/index.generated.html` if it exists) and
+  returns `files_changed` so the UI shows `artifact written · 1 file(s)` + preview
+  rather than a flood. The same fallback exists for non-streaming.
+- `TUIAppShell._chat_runner` also injects a lightweight system reminder when the
+  user message looks like a build request (`landing`/`website`/`page`/`app`/…)
+  so even a minimal provider still knows to fence code.
+
+**2) Reasoning streaming — from chaotic spill to a controlled rolling window**
+
+- Previously `hooks.on_message(delta) → RichLog.write(dim delta)` — every token
+  fragment became a line or an unwrapped spill. On a phone (40 cols) that is
+  200 lines of flicker that destroys scroll and layout.
+- **New:** `tui/streaming.py` — `TUIChunkBuffer` buffers fragments until a word
+  boundary (`min_words=1`, punctuation/newline), `narrow_wrap(width)` wraps to
+  the actual viewport (indent capped at 8 on phone, long tokens hard-broken with
+  `…`), and `StreamingReasoningPresenter` owns a live `10-20 word` rolling window
+  (`window_words=16`). Only the newest words are prominent at the bottom; older
+  scroll into a 500-word history buffer. `max_lines` adapts (`2` on phone,
+  `3` on narrow, `4` on wide) and the top shows `state · elapsed · window size`.
+  Older reasoning shows `↑ older reasoning scrolled up` and a faded preview on wide.
+  `TUIAppShell` now has a dedicated `#reasoning-stream` Static (`Visible` when
+  busy, border-left accent, `max-height` 4/5/7, `transition 150/180ms`) that is
+  updated via `_push_reasoning(chunk)` → `presenter.push(chunk)` → `widget.update`;
+  it is shown at `run_task` start via `_show_reasoning("thinking")` and hidden
+  (`_hide_reasoning`) before the final result. `on_resize` reflows the window
+  to the new width. `on_step` / `on_tool` map to structured states (`thinking` /
+  `planning` / `reading` / `editing` / `generating` / `tools` / `verifying`).
+
+**3) Code rendering — from unstyled overflow to bordered, narrow-safe blocks**
+
+- Previously `_format_result` did `str(output)` → single `Text` with no fences,
+  no indent preservation, no narrow handling — a 300-line page became wrapped
+  garbage that clipped on 40 cols.
+- **New:** `tui/code.py` — `CodeBlockRenderer` (`render_message` / `render_code_only`)
+  detects ```` ```lang ```` fences via `_FENCE_RE`, renders each as a bordered
+  `Group` (`label · lines · rule`, `│` gutter, `width-6` truncation with `…` on
+  overflow, indent `4→2` on phone, never reflowed), handles inline `` `code` ``
+  with `accent_dim`, and **previews** huge blocks (`>18 lines / >1200 chars` on
+  narrow, `>36 / >2500` on wide) with `… full block is N lines — preview above`
+  + `full file written to <path>` when `file_hint` is given. `render_message`
+  interleaves prose + blocks, prose is `textwrap.fill`'d on narrow and inline
+  ticks are highlighted. `TUIAppShell._format_result` now delegates to
+  `render_code_message(raw, tokens, width, file_hint)` and, for `files_changed`,
+  prefixes a success header + file list; for a large unattached HTML it shows a
+  `large artifact detected — showing preview` warning instead of flooding.
+
+### Changed
+- `tui/shell_app.py` — imports `tui.code` + `tui.streaming`; compose adds
+  `#reasoning-stream` between `#notice` and `#conversation`; CSS adds its
+  rules; `__init__` adds `_reasoning_presenter`/`_chunk_buffer`/`_reasoning_full`;
+  `_reasoning_width`/`_show_reasoning`/`_push_reasoning`/`_hide_reasoning` +
+  `on_resize` reflow added; `_hooks` now routes `on_message` through the
+  presenter, `on_step` drives its state, `on_tool` pushes `[name: status]`;
+  `run_task` opens/closes the stream and swallows `CancelledError` cleanly;
+  `_format_result` is code- and artifact-aware; `_build_chat_runner` has the
+  system reminder + both streaming/non-streaming auto-persist fallbacks.
+- `tui/streaming.py` **new** — described above.
+- `tui/code.py` **new** — described above.
+- `prompts/system.py` — new `BUILD_OUTPUT_POLICY` block + export, included in
+  `build_system_prompt` before `OUTPUT_CONTRACT`.
+- Version `1.1.5 → 1.1.6`.
+
+### Tested
+- `ua` run loop vs `TUIAppShell` both exercise the routing: `create a landing
+  page` produces `landing/index.html` (or a folder + HTML at minimum) and the
+  chat shows only `Created landing/index.html (N chars) — open it…` + a
+  18/36-line preview, not the full source.
+- Streaming verified headless at 40×20, 50×30, 60×24, 80×24, 120×32, 150×44:
+  only `10-20` words visible in `#reasoning-stream`, `max-height` 4/5/7, buffer
+  groups half-words, `narrow_wrap` never overflows, resize reflows correctly.
+- Code rendering checked at same widths: fences stay bordered, `│` gutter,
+  long lines truncated `…`, indent `4→2` on phone, huge blocks previewed with
+  `full file written to …`, inline `` `ticks` `` highlighted, prose wrapped.
+
 ### Fixed
 - **F3 (provider), F4 (mode) and ctrl+p (palette) crashed** with
   `NoActiveWorker: push_screen must be run from a worker`. Every action that opens a

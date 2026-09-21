@@ -53,7 +53,9 @@ from textual.widgets import Input, RichLog, Static
 from unknown_agent.observability.logging import get_logger
 from unknown_agent.providers.health import ProviderStatus
 from unknown_agent.tui.commands import Command, CommandRegistry, SlashSuggestions, build_default_commands
+from unknown_agent.tui.code import render_message as render_code_message
 from unknown_agent.tui.history import TuiSessionRecord, TuiSessionStore
+from unknown_agent.tui.streaming import StreamingReasoningPresenter, TUIChunkBuffer, narrow_wrap
 from unknown_agent.tui.dashboard import ContextCard, ProviderCard, SessionCard, UsageCard, status_marker
 from unknown_agent.tui.design import DARK, GLYPH, LIGHT, Tokens, format_duration, tokens_for, truncate
 from unknown_agent.tui.provider_status import (
@@ -289,6 +291,26 @@ class TUIAppShell(App[None]):
     TUIAppShell.is-narrow #context-bar.has-content { display: block; }
     TUIAppShell.is-phone #context-bar.has-content { display: block; padding: 0 1; }
     #context-bar.has-content { display: block; }
+
+    /* ---- reasoning stream — rolling 10-20 word window ----------------- */
+    #reasoning-stream {
+        display: none;
+        height: auto;
+        max-height: 7;
+        margin: 0 2 1 2;
+        padding: 1 1;
+        background: $surface;
+        border: round $primary 20%;
+        border-left: thick $accent;
+        color: $text;
+        transition: opacity 150ms, max-height 180ms in_out_cubic;
+    }
+    #reasoning-stream.visible { display: block; }
+    #reasoning-stream.-thinking { border-left: thick $accent; }
+    #reasoning-stream.-working { border-left: thick $accent; }
+    #reasoning-stream.-tool { border-left: thick $warning; }
+    TUIAppShell.is-narrow #reasoning-stream { margin: 0 1 1 1; padding: 1 1; max-height: 5; }
+    TUIAppShell.is-phone #reasoning-stream { margin: 0 1 1 1; padding: 1 1; max-height: 4; }
     """
 
     #: Only keys that are implemented and safe appear here. Anything unfinished is
@@ -374,6 +396,12 @@ class TUIAppShell(App[None]):
         except Exception:  # noqa: BLE001 - history must never block launch
             log.debug("tui session init failed", exc_info=True)
 
+        # — streaming presenter — rolling 10-20 word window, chunk buffering
+        # Created lazily in run_task so width is correct at that point.
+        self._reasoning_presenter: Any | None = None
+        self._chunk_buffer: Any | None = None
+        self._reasoning_full: str = ""
+
         # Auto-attach a chat runner if config already contains a valid provider/model.
         # This is the fix for “no agent attached” when the TUI was launched without
         # an explicit runner (cli/tui_command did not build one).  The shell now
@@ -399,6 +427,7 @@ class TUIAppShell(App[None]):
         with Horizontal(id="body"):
             with Vertical(id="main"):
                 yield Static("", id="notice")
+                yield Static("", id="reasoning-stream")
                 yield RichLog(id="conversation", wrap=True, markup=False, highlight=False, min_width=24)
                 with Vertical(id="composer-shell"):
                     yield SlashSuggestions(self.tokens, id="slash")
@@ -1143,6 +1172,18 @@ class TUIAppShell(App[None]):
             self._update_responsive()
         except Exception:  # noqa: BLE001
             pass
+        # Keep the rolling window width in sync so wrapping stays correct on rotate
+        try:
+            if self._reasoning_presenter is not None:
+                self._reasoning_presenter.set_width(self._reasoning_width())
+                # Re-render current content at new width
+                widget = self.query_one("#reasoning-stream", Static)
+                if widget.has_class("visible"):
+                    w = self._reasoning_presenter.max_lines
+                    # Force a re-render via push of empty to refresh wrap
+                    widget.update(self._reasoning_presenter.push(""))
+        except Exception:
+            pass
         self._render_chrome()
 
     # ------------------------------------------------------------------ #
@@ -1547,6 +1588,11 @@ class TUIAppShell(App[None]):
         prompt.append(task, style=tokens.text)
         self.write(prompt)
         self.write(Text(""))
+        # — streaming: open the rolling 10-20 word window (older scrolls up) —
+        try:
+            self._show_reasoning("thinking")
+        except Exception:
+            pass
 
         # Lazy recovery: the user may have typed while health was still
         # validating, or the shell was started without a runner.  Try once to
@@ -1588,6 +1634,10 @@ class TUIAppShell(App[None]):
             remedy_str = "  →  ".join(remedies)
             if hint and hint not in remedy_str:
                 remedy_str = f"{hint}  →  {remedy_str}" if remedy_str else hint
+            try:
+                self._hide_reasoning()
+            except Exception:
+                pass
             self.note(f"{msg}{context} — {remedy_str}" if remedy_str else f"{msg}{context}", tone="warn")
             return
 
@@ -1601,6 +1651,10 @@ class TUIAppShell(App[None]):
             provider_label = getattr(state, "provider_label", "") or getattr(state, "provider", "")
             model = getattr(state, "model", "")
             context = f" [{provider_label} · {model}]" if provider_label else ""
+            try:
+                self._hide_reasoning()
+            except Exception:
+                pass
             self.note(f"{msg}{context} — {hint}", tone="warn")
             return
 
@@ -1626,6 +1680,12 @@ class TUIAppShell(App[None]):
             with ErrorBoundary(self, region="agent run"):
                 result = await self._runner(task, self._hooks())
                 self._record_usage(result)
+                # Close the live reasoning stream before the final answer so the
+                # rolling window doesn't overlap the styled output
+                try:
+                    self._hide_reasoning()
+                except Exception:
+                    pass
                 formatted = self._format_result(result)
                 self.write(formatted)
                 self.write(Text(""))
@@ -1638,9 +1698,17 @@ class TUIAppShell(App[None]):
                 except Exception:
                     pass
         except asyncio.CancelledError:
+            try:
+                self._hide_reasoning()
+            except Exception:
+                pass
             self.note("cancelled", tone="warn")
             raise
         finally:
+            try:
+                self._hide_reasoning()
+            except Exception:
+                pass
             self.busy = False
             try:
                 self.remove_class("is-busy")
@@ -1652,6 +1720,79 @@ class TUIAppShell(App[None]):
             self._refresh_sidebar()
             self._render_footer()
 
+    def _reasoning_width(self) -> int:
+        try:
+            w = self.query_one("#reasoning-stream", Static).size.width or self.size.width or 80
+            return int(w)
+        except Exception:
+            try:
+                return int(self.size.width or 80)
+            except Exception:
+                return 80
+
+    def _show_reasoning(self, state: str = "thinking") -> None:
+        try:
+            width = self._reasoning_width()
+            from unknown_agent.tui.streaming import StreamingReasoningPresenter, TUIChunkBuffer
+            self._reasoning_presenter = StreamingReasoningPresenter(self.tokens, width=width, window_words=16)
+            self._chunk_buffer = TUIChunkBuffer(min_words=1)
+            self._reasoning_full = ""
+            widget = self.query_one("#reasoning-stream", Static)
+            widget.update(self._reasoning_presenter.start(state))
+            widget.add_class("visible")
+            widget.remove_class("-thinking"); widget.remove_class("-working"); widget.remove_class("-tool")
+            widget.add_class(f"-{state}" if state in {"thinking","working","tool"} else "-thinking")
+        except Exception:
+            self._reasoning_presenter = None
+            self._chunk_buffer = None
+
+    def _push_reasoning(self, delta: str) -> None:
+        if not delta:
+            return
+        self._reasoning_full += delta
+        try:
+            if self._reasoning_presenter is None or self._chunk_buffer is None:
+                self._show_reasoning("thinking")
+            if self._chunk_buffer is not None:
+                chunk = self._chunk_buffer.push(delta)
+                if not chunk:
+                    # Keep the live window responsive even for sub-word fragments
+                    # by updating with the raw delta occasionally
+                    if len(delta.strip()) > 6:
+                        chunk = delta
+                    else:
+                        return
+            else:
+                chunk = delta
+            if self._reasoning_presenter is not None:
+                rendered = self._reasoning_presenter.push(chunk)
+                if rendered is not None:
+                    try:
+                        width = self._reasoning_width()
+                        self._reasoning_presenter.set_width(width)
+                    except Exception:
+                        pass
+                    self.query_one("#reasoning-stream", Static).update(rendered)
+        except Exception:
+            # Fallback: old behavior — just write dim text so nothing is lost
+            try:
+                self.write(Text(str(delta), style=self.tokens.dim))
+            except Exception:
+                pass
+
+    def _hide_reasoning(self) -> None:
+        try:
+            widget = self.query_one("#reasoning-stream", Static)
+            widget.remove_class("visible")
+            widget.update(Text(""))
+        except Exception:
+            pass
+        # Optionally, the full reasoning is already captured in _reasoning_full;
+        # we don't auto-append it to conversation — the final result will do that
+        # cleanly via _format_result. Keeping it separate avoids double-spill.
+        self._reasoning_presenter = None
+        self._chunk_buffer = None
+
     def _hooks(self) -> Any:
         from types import SimpleNamespace
 
@@ -1659,11 +1800,53 @@ class TUIAppShell(App[None]):
             self._session_info["step"] = label
             with ErrorBoundary(self, region="progress", quiet=True):
                 self.query_one("#card-session", SessionCard).info = dict(self._session_info)
+            # Also reflect as reasoning state when busy
+            try:
+                if self.busy and self._reasoning_presenter is not None:
+                    # Map step to state
+                    s = str(label or "").lower()
+                    if "read" in s or "inspect" in s:
+                        state = "reading"
+                    elif "edit" in s or "write" in s or "patch" in s:
+                        state = "editing"
+                    elif "tool" in s:
+                        state = "tools"
+                    elif "verify" in s:
+                        state = "verifying"
+                    elif "plan" in s:
+                        state = "planning"
+                    elif "generat" in s:
+                        state = "generating"
+                    else:
+                        state = "working"
+                    # Restart presenter with new label if state changed
+                    if self._reasoning_presenter and self._reasoning_presenter.state != state:
+                        self._show_reasoning(state)
+            except Exception:
+                pass
 
         def on_message(text: str = "", **_: Any) -> None:
+            # Route through the rolling presenter — not raw spill
+            try:
+                if self.busy:
+                    self._push_reasoning(str(text))
+                    return
+            except Exception:
+                pass
             self.write(Text(str(text), style=self.tokens.dim))
 
-        return SimpleNamespace(on_step=on_step, on_message=on_message, on_tool=lambda *a, **k: None)
+        def on_tool(name: str = "", status: str = "", **_: Any) -> None:
+            try:
+                if self.busy and name:
+                    self._push_reasoning(f"\n[{name}: {status}] ")
+                    # Also update session step
+                    self._session_info["step"] = f"{name} {status}".strip()
+                    with ErrorBoundary(self, region="progress", quiet=True):
+                        self.query_one("#card-session", SessionCard).info = dict(self._session_info)
+            except Exception:
+                pass
+
+        return SimpleNamespace(on_step=on_step, on_message=on_message, on_tool=on_tool)
 
     def _record_usage(self, result: Any) -> None:
         with ErrorBoundary(self, region="usage accounting", quiet=True):
@@ -1680,9 +1863,89 @@ class TUIAppShell(App[None]):
 
     def _format_result(self, result: Any) -> Any:
         tokens = self.tokens
+        raw = str(getattr(result, "output", None) or getattr(result, "summary", None) or result or "")
+        if not raw.strip():
+            body = Text()
+            body.append(f"{GLYPH['bullet']} ", style=tokens.ok)
+            body.append("(no output)", style=tokens.muted)
+            return body
+
+        # If the output is a build artifact that was already written to disk,
+        # it will be summarized via files_changed; but if raw is huge code,
+        # render it through the code-aware presenter so narrow/mobile stays sane.
+        # Detect artifact hints: if result has files_changed, treat raw as summary,
+        # not as code to dump.
+        files_changed = getattr(result, "files_changed", None) or getattr(getattr(result, "state", None), "files_changed", None)
+        if files_changed:
+            # Prefer the summary + file list over raw code — artifact-first
+            body = Text()
+            body.append(f"{GLYPH['bullet']} ", style=tokens.ok)
+            # Use summary if present, else raw, but keep it short
+            summary = str(getattr(result, "summary", "") or getattr(result, "output", "") or raw).strip()
+            # If summary is still huge code-like, route through code renderer with preview
+            if len(summary) > 2500 or summary.count("\n") > 40:
+                try:
+                    width = self._reasoning_width()
+                except Exception:
+                    width = 80
+                rendered = render_code_message(summary, tokens, width, file_hint=str(files_changed[0]) if files_changed else None)
+                # Prepend a success line + file list, then the (previewed) code below
+                header = Text()
+                header.append(f"{GLYPH['ok']} ", style=tokens.ok)
+                header.append("artifact written", style=f"bold {tokens.text}")
+                header.append(f"  ·  {len(files_changed)} file(s)", style=tokens.muted)
+                from rich.console import Group
+                file_list = Text()
+                for f in list(files_changed)[:8]:
+                    file_list.append(f"  {GLYPH['dot']} {f}\n", style=tokens.dim)
+                return Group(header, file_list, Text(""), rendered.renderable)
+            body.append(truncate(summary, 600), style=tokens.text)
+            if files_changed:
+                body.append("\n")
+                for f in list(files_changed)[:6]:
+                    body.append(f"  {GLYPH['dot']} {f}\n", style=tokens.dim)
+                if len(files_changed) > 6:
+                    body.append(f"  … and {len(files_changed)-6} more\n", style=tokens.faint)
+            return body
+
+        # No files_changed — render raw, but code-aware: fences become styled blocks,
+        # huge blocks are previewed, narrow wraps safely.
+        try:
+            width = self._reasoning_width()
+        except Exception:
+            width = 80
+        # Heuristic: if raw looks like a full HTML/CSS/JS project, we should NOT dump it.
+        # Instead, show a preview + note. The project file should have been written,
+        # but if the LLM failed to use tools, we at least don't flood the chat.
+        is_full_project = (
+            ("<!DOCTYPE html>" in raw or "<html" in raw.lower()) and len(raw) > 1200
+        ) or (raw.count("\n") > 60 and ("```" in raw or "function" in raw))
+        if is_full_project and len(raw) > 1500:
+            rendered = render_code_message(raw, tokens, width, file_hint="project file (not yet written — ask to write to disk)")
+            note = Text()
+            note.append(f"{GLYPH['warn']} ", style=tokens.warn)
+            note.append("large artifact detected — showing preview", style=tokens.warn)
+            note.append("  ·  ask me to write it to a file to get the full artifact", style=tokens.faint)
+            from rich.console import Group
+            return Group(note, Text(""), rendered.renderable)
+
+        rendered = render_code_message(raw, tokens, width)
+        if rendered.had_code:
+            # Code-aware rendering already did fences + preview; add a bullet header
+            from rich.console import Group
+            header = Text()
+            header.append(f"{GLYPH['bullet']} ", style=tokens.ok)
+            header.append("output", style=tokens.muted)
+            return Group(header, rendered.renderable)
+        # Plain prose — just bullet + rendered prose
         body = Text()
         body.append(f"{GLYPH['bullet']} ", style=tokens.ok)
-        body.append(str(getattr(result, "output", None) or getattr(result, "summary", None) or result), style=tokens.text)
+        # rendered.renderable is a Text for prose
+        try:
+            # If prose renderer returned a Text, append its plain with style
+            body.append_text(rendered.renderable)  # type: ignore[attr-defined]
+        except Exception:
+            body.append(str(rendered.renderable), style=tokens.text)
         return body
 
     # ------------------------------------------------------------------ #
@@ -1806,8 +2069,17 @@ class TUIAppShell(App[None]):
             model = getattr(current_profile, "model", provider.model) if current_profile is not None else provider.model
             temperature = float(getattr(current_profile, "temperature", provider.temperature) if current_profile is not None else provider.temperature)
             max_tokens = int(getattr(current_profile, "max_output_tokens", provider.max_output_tokens) if current_profile is not None else provider.max_output_tokens)
+            # Artifact-first reminder for build tasks — the system prompt already
+            # says files-first, but the minimal chat path has no system prompt,
+            # so we inject a lightweight reminder when the user likely wants a file.
+            task_lower = task.lower()
+            wants_artifact = any(k in task_lower for k in ("landing", "website", "page", "app", "component", "build ", "create ", "generate ", "html", "css", "script", "site"))
+            messages: list[Message] = []
+            if wants_artifact and len(task) > 20:
+                messages.append(Message(role="system", content="Build-task output policy: if the user wants a project/artifact (landing page, app, website, script), you MUST create files via tools in a real agent run. In this chat fallback you cannot call tools, so keep the answer concise and structured, but if you must output full source, wrap it in a ```lang fenced block. The UI will preview it and note the file path."))
+            messages.append(Message(role="user", content=task))
             request = ModelRequest(
-                messages=[Message(role="user", content=task)],
+                messages=messages,
                 temperature=temperature,
                 max_output_tokens=max_tokens,
             )
@@ -1840,16 +2112,79 @@ class TUIAppShell(App[None]):
                             usage = chunk.usage
                         if chunk.finish_reason is not None:
                             finish = chunk.finish_reason
+                    # Artifact fallback: if the model dumped a full HTML project as chat,
+                    # persist it to disk so the user gets a real file (not just chat).
+                    files_changed: list[str] | None = None
+                    try:
+                        if full and ("<!DOCTYPE html>" in full or "<html" in full.lower()) and len(full) > 1200:
+                            import re as _re
+                            from pathlib import Path as _Path
+                            # Try to extract the first HTML block if fenced
+                            html = full
+                            m = _re.search(r"```(?:html)?\s*([\s\S]*?<!DOCTYPE[\s\S]*?)```", full, _re.IGNORECASE)
+                            if m:
+                                html = m.group(1).strip()
+                            else:
+                                # Find the slice from <!DOCTYPE to </html>
+                                s = full.lower().find("<!doctype")
+                                e = full.lower().rfind("</html>")
+                                if s != -1 and e != -1:
+                                    html = full[s : e + 7]
+                            if "<html" in html.lower() and len(html) > 800:
+                                target = _Path.cwd() / "landing" / "index.html"
+                                target.parent.mkdir(parents=True, exist_ok=True)
+                                if not target.exists():
+                                    target.write_text(html, encoding="utf-8")
+                                    files_changed = [str(target.relative_to(_Path.cwd())) if target.is_relative_to(_Path.cwd()) else str(target)]
+                                else:
+                                    # Don't overwrite without ask — use a variant
+                                    alt = _Path.cwd() / "landing" / "index.generated.html"
+                                    alt.write_text(html, encoding="utf-8")
+                                    files_changed = [str(alt.relative_to(_Path.cwd())) if alt.is_relative_to(_Path.cwd()) else str(alt)]
+                    except Exception:
+                        files_changed = None
                     # Record usage for the dashboard
                     from types import SimpleNamespace
 
+                    if files_changed:
+                        return SimpleNamespace(output=full, content=full, usage=usage, finish_reason=finish, model=model, files_changed=files_changed, summary=f"Created {files_changed[0]} ({len(full)} chars) — open it in a browser. Preview shown in chat.")
                     return SimpleNamespace(output=full, content=full, usage=usage, finish_reason=finish, model=model)
                 # Fallback to single complete
                 response = await provider.complete(request)
                 if response.error:
                     raise RuntimeError(response.error)
+                # Same artifact fallback for non-streaming path
+                files_changed2: list[str] | None = None
+                try:
+                    _full2 = response.content or ""
+                    if _full2 and ("<!DOCTYPE html>" in _full2 or "<html" in _full2.lower()) and len(_full2) > 1200:
+                        import re as _re2
+                        from pathlib import Path as _Path2
+                        html2 = _full2
+                        m2 = _re2.search(r"```(?:html)?\s*([\s\S]*?<!DOCTYPE[\s\S]*?)```", _full2, _re2.IGNORECASE)
+                        if m2:
+                            html2 = m2.group(1).strip()
+                        else:
+                            s2 = _full2.lower().find("<!doctype")
+                            e2 = _full2.lower().rfind("</html>")
+                            if s2 != -1 and e2 != -1:
+                                html2 = _full2[s2 : e2 + 7]
+                        if "<html" in html2.lower() and len(html2) > 800:
+                            target2 = _Path2.cwd() / "landing" / "index.html"
+                            target2.parent.mkdir(parents=True, exist_ok=True)
+                            if not target2.exists():
+                                target2.write_text(html2, encoding="utf-8")
+                                files_changed2 = [str(target2.relative_to(_Path2.cwd())) if target2.is_relative_to(_Path2.cwd()) else str(target2)]
+                            else:
+                                alt2 = _Path2.cwd() / "landing" / "index.generated.html"
+                                alt2.write_text(html2, encoding="utf-8")
+                                files_changed2 = [str(alt2.relative_to(_Path2.cwd())) if alt2.is_relative_to(_Path2.cwd()) else str(alt2)]
+                except Exception:
+                    files_changed2 = None
                 from types import SimpleNamespace
 
+                if files_changed2:
+                    return SimpleNamespace(output=response.content, content=response.content, usage=response.usage, finish_reason=response.finish_reason, model=model, raw=response.raw, files_changed=files_changed2, summary=f"Created {files_changed2[0]} — open it in a browser. Preview shown in chat.")
                 return SimpleNamespace(output=response.content, content=response.content, usage=response.usage, finish_reason=response.finish_reason, model=model, raw=response.raw)
             finally:
                 provider.model = original_model

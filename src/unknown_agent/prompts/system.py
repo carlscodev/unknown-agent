@@ -77,6 +77,35 @@ OUTPUT_CONTRACT = """Reporting contract:
 - End with what a human should do next (review, run, deploy, or decide)."""
 
 
+BUILD_OUTPUT_POLICY = """Build-task output policy — files first, chat second (critical):
+
+- If the user asks for a project or artifact — landing page, app, website, script,
+  component, or any build artifact — you MUST create the actual files and folders
+  in the workspace using write_file / apply_patch / create_directory tools.
+  Do NOT dump the entire generated project as raw code into the chat.
+
+- For a landing page, at minimum create a folder and an HTML file (plus CSS/JS/assets
+  if needed), then tell the user what was created and where.
+
+- After writing files, summarize in chat in 4-7 lines: what folder was created,
+  what files were created, what the entry file is, and how to open/run it.
+  Only show small code snippets inline if truly needed for explanation.
+
+- Distinguish three cases:
+  1) Conversational answer → plain text.
+  2) Small inline example (a few lines) → inline code block is fine.
+  3) Real artifact-building task → file creation is the default. Chat is a summary,
+     not the artifact carrier.
+
+- If output is long source code (> 40 lines or > 1500 chars), prefer writing files
+  and summarizing. If you must show code in chat, render it as a clean fenced block
+  (```lang) and keep it short — show a preview plus a note that the full file was
+  written to disk. Never flood the chat with a full project when files were requested.
+
+- Never use the chat as the primary output channel for generated projects.
+"""
+
+
 def build_system_prompt(
     *,
     mode: str = "auto",
@@ -140,6 +169,7 @@ def build_system_prompt(
         )
     if extra_instructions:
         blocks.append("Repository-specific instructions\n-------------------------------\n" + extra_instructions.strip())
+    blocks.append(BUILD_OUTPUT_POLICY)
     blocks.append(OUTPUT_CONTRACT)
     return "\n\n".join(block for block in blocks if block).strip() + "\n"
 
@@ -169,4 +199,5 @@ __all__ = [
     "TOOL_PROTOCOL",
     "DEFINITION_OF_DONE",
     "OUTPUT_CONTRACT",
+    "BUILD_OUTPUT_POLICY",
 ]
