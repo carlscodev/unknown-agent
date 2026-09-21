@@ -1,0 +1,11 @@
+{
+  "artifacts": 3,
+  "iframe_prev": 1,
+  "img_prev": 1,
+  "file_card": 1,
+  "chip_agent": 1,
+  "overflow_desktop": {
+    "sw": 1440,
+    "iw": 1440
+  }
+}

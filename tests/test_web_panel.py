@@ -397,6 +397,8 @@ async def test_stop_cancels_generation(env, monkeypatch) -> None:
         with client.websocket_connect("/api/ws") as ws:
             ws.send_json({"text": "long one"})
             first = ws.receive_json()
+            if first["type"] == "mode":  # routing announcement precedes the stream
+                first = ws.receive_json()
             assert first["type"] == "delta"
             ws.send_json({"type": "stop"})
             kinds = []
@@ -481,13 +483,24 @@ async def test_agent_mode_runs_real_runner_and_emits_artifact(env, monkeypatch) 
 
     async with _client(env) as c:
         await _owner_client(c)
-        r = await c.post("/api/chat", json={"text": "crea una landing", "agent": True})
+        r = await c.post(
+            "/api/chat",
+            json={"text": "crea una landing", "agent": True, "provider": "unli", "model": "auto"},
+        )
         assert r.status_code == 200
         body = r.json()
         assert body["content"] == "Listo: escribi demo/index.html"
         assert body["artifacts"] == [
-            {"type": "artifact", "url": "/api/files/demo/index.html", "name": "demo/index.html"}
+            {
+                "type": "artifact",
+                "kind": "html",
+                "url": "/api/files/demo/index.html",
+                "name": "demo/index.html",
+            }
         ]
+        # provider/model chosen in the composer are passed to the Runner
+        assert _StubRunner.instances[0].request.provider == "unli"
+        assert _StubRunner.instances[0].request.model == "auto"
         # the real Runner received the task and auto-approve for non-interactive use
         assert len(_StubRunner.instances) == 1
         assert _StubRunner.instances[0].request.task == "crea una landing"
@@ -543,6 +556,59 @@ async def test_files_endpoint_requires_auth_and_blocks_traversal(env) -> None:
         assert r.status_code == 404  # traversal stays rooted at cwd
         r = await c.get("/api/files/missing.txt")
         assert r.status_code == 404
+
+
+async def test_agent_mode_emits_image_and_file_artifacts(env, monkeypatch) -> None:
+    import unknown_agent.core.runner as runner_mod
+
+    class _ImageRunner(_StubRunner):
+        async def setup(self):
+            return None
+
+        async def execute(self):
+            return SimpleNamespace(
+                summary="listo",
+                outcome=None,
+                ok=True,
+                blockers=[],
+                status="completed",
+                files_changed=["assets/logo.png", "notes.md", "data.bin"],
+                state=SimpleNamespace(model="auto", provider="unli"),
+            )
+
+    monkeypatch.setattr(runner_mod, "Runner", _ImageRunner)
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post("/api/chat", json={"text": "crea el logo", "agent": True})
+        kinds = [a["kind"] for a in r.json()["artifacts"]]
+        names = [a["name"] for a in r.json()["artifacts"]]
+        assert kinds == ["image", "file"]
+        assert names == ["assets/logo.png", "notes.md"]  # binary junk gets no card
+
+
+async def test_chat_provider_and_model_override(env, monkeypatch) -> None:
+    captured = {}
+
+    class StubProvider:
+        supports_streaming = False
+        model = "stub-1"
+        temperature = 0.2
+        max_output_tokens = 512
+
+        async def complete(self, request):
+            captured["model"] = self.model
+            return SimpleNamespace(content="ok", error=None)
+
+    import unknown_agent.providers.registry as registry
+
+    monkeypatch.setattr(registry, "build_provider", lambda *_, **__: StubProvider())
+    async with _client(env) as c:
+        await _owner_client(c)
+        r = await c.post(
+            "/api/chat", json={"text": "hola, todo bien?", "provider": "unli", "model": "mini-9"}
+        )
+        assert r.status_code == 200
+        assert captured["model"] == "mini-9"
 
 
 async def test_auto_route_sends_questions_to_streaming_chat(env, monkeypatch) -> None:

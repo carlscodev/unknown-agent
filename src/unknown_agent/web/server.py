@@ -70,6 +70,7 @@ class _Body(BaseModel):
     command: str | None = None
     args: list[str] = []
     url: str | None = None
+    provider: str | None = None
     mode: str | None = None
     max_steps: int | None = None
     reasoning: str | None = None
@@ -328,6 +329,8 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         emit: Emit,
         attach_ids: list[str] | None = None,
         agent_pref: bool | None = None,
+        run_provider: str | None = None,
+        run_model: str | None = None,
     ) -> None:
         if await _run_command(sid, text, emit):
             return
@@ -358,10 +361,17 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
 
         # -- route: full agent (real tools) for build/file work ------------- #
         if agent_pref is True or (agent_pref is None and _needs_agent(text)):
-            await _run_agent(text, emit, extra="\n\n".join(blocks))
+            await emit({"type": "mode", "mode": "agent"})
+            await _run_agent(
+                text, emit, extra="\n\n".join(blocks), provider=run_provider, model=run_model
+            )
             return
 
-        pname, profile = _profile_pair(settings)
+        await emit({"type": "mode", "mode": "chat"})
+        if run_provider and run_provider in settings.providers:
+            pname, profile = run_provider, settings.providers[run_provider]
+        else:
+            pname, profile = _profile_pair(settings)
         if profile is None:
             await emit(
                 {
@@ -391,7 +401,7 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         messages += [Message(role=m["role"], content=m["content"]) for m in stored[-HISTORY_LIMIT:]]
         if images:
             messages[-1] = Message(role="user", content=user_text, images=images)
-        model = getattr(profile, "model", "") or provider.model
+        model = run_model or getattr(profile, "model", "") or provider.model
         request = ModelRequest(
             messages=messages,
             temperature=float(getattr(profile, "temperature", provider.temperature) or 0.7),
@@ -543,7 +553,23 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         _emit_tasks.add(task)
         task.add_done_callback(_emit_tasks.discard)
 
-    async def _run_agent(text: str, emit: Emit, extra: str = "") -> None:
+    def _artifact_kind(name: str) -> str:
+        low = name.lower()
+        if low.endswith((".html", ".htm")):
+            return "html"
+        if low.endswith((".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg")):
+            return "image"
+        if low.endswith(".pdf"):
+            return "pdf"
+        return "file"
+
+    async def _run_agent(
+        text: str,
+        emit: Emit,
+        extra: str = "",
+        provider: str | None = None,
+        model: str | None = None,
+    ) -> None:
         """Run the real hyperagent (tools, planning, verification) for this message."""
         from urllib.parse import quote
 
@@ -591,6 +617,8 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             non_interactive=True,
             yes=True,
             extra_instructions=extra or None,
+            provider=provider or None,
+            model=model or None,
         )
         runner = Runner(loaded, request=request, hooks=hooks)
         try:
@@ -615,9 +643,15 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         summary = answer or result.summary or "(run finished without a summary)"
         await emit({"type": "delta", "delta": summary})
         for changed in result.files_changed:
-            if changed.lower().endswith((".html", ".htm")):
+            kind = _artifact_kind(changed)
+            if kind != "file" or changed.lower().endswith((".md", ".txt")):
                 await emit(
-                    {"type": "artifact", "url": f"/api/files/{quote(changed)}", "name": changed}
+                    {
+                        "type": "artifact",
+                        "kind": kind,
+                        "url": f"/api/files/{quote(changed)}",
+                        "name": changed,
+                    }
                 )
         if not result.ok:
             blockers = "; ".join(result.blockers) or str(result.status)
@@ -639,10 +673,12 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         emit: Emit,
         attach_ids: list[str] | None,
         agent_pref: bool | None = None,
+        run_provider: str | None = None,
+        run_model: str | None = None,
     ) -> asyncio.Task[None]:
         async def _wrap() -> None:
             try:
-                await _run_chat(sid, text, emit, attach_ids, agent_pref)
+                await _run_chat(sid, text, emit, attach_ids, agent_pref, run_provider, run_model)
             except asyncio.CancelledError:
                 return
             except Exception:
@@ -848,7 +884,7 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             elif msg.get("type") == "error":
                 out["error"] = msg.get("error")
 
-        await _run_chat(sid, text, emit, body.attachments, body.agent)
+        await _run_chat(sid, text, emit, body.attachments, body.agent, body.provider, body.model)
         if out["error"] and not out["content"]:
             return JSONResponse({"error": out["error"]}, status_code=502)
         return JSONResponse(out)
@@ -881,6 +917,8 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
                     emit,
                     payload.get("attachments") or [],
                     payload.get("agent") if isinstance(payload.get("agent"), bool) else None,
+                    payload.get("provider") or None,
+                    payload.get("model") or None,
                 )
         except WebSocketDisconnect:
             _stop(sid)

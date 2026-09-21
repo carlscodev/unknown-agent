@@ -183,7 +183,7 @@ def run_command(
         # The bracket is escaped: Rich parses help strings as markup, so a bare
         # "[orchestration]" is swallowed as a style tag and the sentence reads
         # "decide from  and task complexity".
-        help="Force multi-worker delegation on or off (default: decide from \[orchestration] and task complexity).",
+        help="Force multi-worker delegation on or off (default: decide from \\[orchestration] and task complexity).",
     ),
 ) -> None:
     """Execute a task end-to-end: plan, act, verify, self-heal, report.
@@ -225,7 +225,7 @@ def build_command(
         # The bracket is escaped: Rich parses help strings as markup, so a bare
         # "[orchestration]" is swallowed as a style tag and the sentence reads
         # "decide from  and task complexity".
-        help="Force multi-worker delegation on or off (default: decide from \[orchestration] and task complexity).",
+        help="Force multi-worker delegation on or off (default: decide from \\[orchestration] and task complexity).",
     ),
 ) -> None:
     """Build something new with a strict completion bar.
@@ -266,7 +266,7 @@ def fix_command(
         # The bracket is escaped: Rich parses help strings as markup, so a bare
         # "[orchestration]" is swallowed as a style tag and the sentence reads
         # "decide from  and task complexity".
-        help="Force multi-worker delegation on or off (default: decide from \[orchestration] and task complexity).",
+        help="Force multi-worker delegation on or off (default: decide from \\[orchestration] and task complexity).",
     ),
 ) -> None:
     """Diagnose an issue, patch it, and prove it with tests/browser evidence.

@@ -6,6 +6,26 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-09-21
+
+### Added
+
+- **Per-message provider/model.** The composer selects now apply to each run
+  (chat and full agent) instead of only switching the global profile.
+- **Artifact previews beyond HTML.** Agent-written images render inline and other
+  files (PDF, markdown, text) get a preview card with an open action.
+- **Mode chip.** Assistant messages show a `full agent` chip when the full Runner
+  handled them, making the auto-router legible.
+- **WebSocket auto-reconnect** with exponential backoff; the panel recovers from a
+  server restart without a manual refresh.
+- QA harness for the panel features (`web/qa/qa9.py` + stub backend).
+
+### Fixed
+
+- `ua run/build/fix` help texts no longer raise `SyntaxWarning` at startup while
+  keeping the literal `[orchestration]` in rich output.
+
+
 ## [1.4.0] - 2026-09-21
 
 ### Added — the web agent is now a real agent

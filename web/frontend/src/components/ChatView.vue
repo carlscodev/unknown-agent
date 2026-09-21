@@ -20,6 +20,9 @@ const live = ref(false);
 const transcript = ref(null);
 const agentMode = ref("auto"); // "auto" | "on"
 let ws = null;
+let reconnectTimer = 0;
+let reconnectDelay = 1000;
+let closed = false;
 
 /* internal-activity window + real phase timers */
 const activity = ref([]);
@@ -73,6 +76,8 @@ function scrollDown() {
   });
 }
 
+const pendingMode = ref("");
+
 function lastTyping() {
   for (let i = messages.value.length - 1; i >= 0; i--) {
     if (messages.value[i].typing) return messages.value[i];
@@ -81,7 +86,9 @@ function lastTyping() {
 }
 
 function applyWs(msg) {
-  if (msg.type === "phase") {
+  if (msg.type === "mode") {
+    pendingMode.value = msg.mode;
+  } else if (msg.type === "phase") {
     phase.value = "thinking";
   } else if (msg.type === "thought") {
     activity.value.push({ kind: "thought", text: msg.text });
@@ -107,14 +114,19 @@ function applyWs(msg) {
     streamText.value += msg.delta;
     let last = messages.value[messages.value.length - 1];
     if (!last || last.role !== "assistant" || !last.typing) {
-      last = { role: "assistant", content: "", typing: true };
+      last = { role: "assistant", content: "", typing: true, mode: pendingMode.value };
       messages.value.push(last);
     }
     last.content += msg.delta;
   } else if (msg.type === "artifact") {
     messages.value.push({ role: "assistant", content: "", artifact: msg });
   } else if (msg.type === "message") {
-    messages.value.push({ role: "assistant", content: msg.content, command: true });
+    messages.value.push({
+      role: "assistant",
+      content: msg.content,
+      command: true,
+      mode: pendingMode.value,
+    });
   } else if (msg.type === "done") {
     const last = lastTyping();
     if (last) {
@@ -157,7 +169,10 @@ function connect() {
     ws = null;
     return;
   }
-  ws.onopen = () => (live.value = true);
+  ws.onopen = () => {
+    live.value = true;
+    reconnectDelay = 1000;
+  };
   ws.onmessage = (ev) => {
     try {
       applyWs(JSON.parse(ev.data));
@@ -168,6 +183,10 @@ function connect() {
   ws.onclose = () => {
     live.value = false;
     ws = null;
+    if (!closed) {
+      reconnectTimer = setTimeout(connect, reconnectDelay);
+      reconnectDelay = Math.min(reconnectDelay * 2, 15000);
+    }
   };
 }
 
@@ -181,12 +200,22 @@ async function send(text, attachIds) {
   startTimers();
   scrollDown();
   const agent = agentMode.value === "on" ? true : null;
+  const runProvider = status.value.active || null;
+  const runModel = status.value.model || null;
   if (ws && ws.readyState === WebSocket.OPEN) {
-    ws.send(JSON.stringify({ text, attachments: attachIds, agent }));
+    ws.send(
+      JSON.stringify({
+        text,
+        attachments: attachIds,
+        agent,
+        provider: runProvider,
+        model: runModel,
+      })
+    );
     return;
   }
   try {
-    const r = await api.chat(text, attachIds, agent);
+    const r = await api.chat(text, attachIds, agent, runProvider, runModel);
     applyWs({ type: "message", content: r.content || r.deltas.join("") });
     for (const a of r.artifacts || []) applyWs({ type: "artifact", ...a });
     applyWs({ type: "done" });
@@ -224,6 +253,8 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   clearInterval(tickId);
+  closed = true;
+  clearTimeout(reconnectTimer);
   ws && ws.close();
 });
 </script>
