@@ -3,7 +3,7 @@
 # Unknown Agent installer (Linux-first, POSIX sh)
 #
 # Recommended usage (download, INSPECT, then run - never pipe blindly):
-#   curl -fsSLO https://raw.githubusercontent.com/klowerg/Unknown-Agent/main/scripts/install.sh
+#   curl -fsSLO https://raw.githubusercontent.com/flormariap/unknown-agent/main/scripts/install.sh
 #   less install.sh            # read what you are about to execute
 #   sh install.sh
 #
@@ -35,7 +35,7 @@
 set -eu
 
 # ----------------------------- configuration --------------------------------
-GIT_URL="${UA_GIT_URL:-https://github.com/klowerg/Unknown-Agent}"
+GIT_URL="${UA_GIT_URL:-https://github.com/flormariap/unknown-agent}"
 GIT_REF="${UA_GIT_REF:-main}"
 PKG="unknown-agent"
 UA_HOME="${UA_HOME:-$HOME/.local/share/unknown-agent}"

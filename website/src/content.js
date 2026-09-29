@@ -1,4 +1,4 @@
-export const github = "https://github.com/klowerg/Unknown-Agent";
+export const github = "https://github.com/flormariap/unknown-agent";
 export const releases = `${github}/releases/latest`;
 
 export const capabilities = [

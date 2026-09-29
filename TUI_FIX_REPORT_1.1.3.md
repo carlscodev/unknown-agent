@@ -3,7 +3,7 @@
 **Fecha:** 2026-09-21 ( America/Caracas )
 **Commit:** `00468c2` — `release: 1.1.3 - fix TUI no-agent-attached (Hola) and /setup slash (suspend/Worker), precise diagnostics and streaming`
 **Tag:** `v1.1.3` (local, listo para `git push origin v1.1.3`)
-**Repo:** https://github.com/klowerg/Unknown-Agent.git
+**Repo:** https://github.com/flormariap/unknown-agent.git
 
 ---
 
@@ -175,15 +175,15 @@ read -rs GITHUB_TOKEN && export GITHUB_TOKEN
 git -c credential.helper='!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f' push origin main
 git -c credential.helper='!f() { echo "username=x-access-token"; echo "password=${GITHUB_TOKEN}"; }; f' push origin v1.1.3
 unset GITHUB_TOKEN
-git remote -v  # debe mostrar https://github.com/klowerg/Unknown-Agent.git SIN token
+git remote -v  # debe mostrar https://github.com/flormariap/unknown-agent.git SIN token
 ```
 
 **Update para usuarios en 1.1.1/1.1.2:**
 
 ```bash
-pip install --upgrade git+https://github.com/klowerg/Unknown-Agent.git@v1.1.3
-pipx install --force git+https://github.com/klowerg/Unknown-Agent.git@v1.1.3
-uv tool install --force git+https://github.com/klowerg/Unknown-Agent.git@v1.1.3
+pip install --upgrade git+https://github.com/flormariap/unknown-agent.git@v1.1.3
+pipx install --force git+https://github.com/flormariap/unknown-agent.git@v1.1.3
+uv tool install --force git+https://github.com/flormariap/unknown-agent.git@v1.1.3
 # o auto-detecta:
 ua upgrade --check
 ua upgrade --yes
@@ -193,8 +193,8 @@ ua version  # debe mostrar 1.1.3
 El workflow `release.yml` verificará `tag == __version__`, correrá tests, construirá `sdist+wheel`, generará `SHA256SUMS` y creará el GitHub Release. Verificación:
 
 ```bash
-curl -fsSLO https://github.com/klowerg/Unknown-Agent/releases/download/v1.1.3/install.sh
-curl -fsSLO https://github.com/klowerg/Unknown-Agent/releases/download/v1.1.3/SHA256SUMS
+curl -fsSLO https://github.com/flormariap/unknown-agent/releases/download/v1.1.3/install.sh
+curl -fsSLO https://github.com/flormariap/unknown-agent/releases/download/v1.1.3/SHA256SUMS
 sha256sum -c SHA256SUMS --ignore-missing && sh install.sh
 ```
 

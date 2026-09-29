@@ -45,7 +45,7 @@ Linux is the primary platform; macOS and Windows are supported.
 ### One command (recommended, isolated)
 
 ```bash
-pipx install "git+https://github.com/klowerg/Unknown-Agent"        # or: uv tool install "git+https://github.com/klowerg/Unknown-Agent"
+pipx install "git+https://github.com/flormariap/unknown-agent"        # or: uv tool install "git+https://github.com/flormariap/unknown-agent"
 ua setup                                                 # interactive setup panel (provider → key → model)
 ```
 
@@ -58,7 +58,7 @@ system Python. `uv tool` is equivalent and faster.
 Download it, **read it**, then run it — never pipe remote code straight into a shell:
 
 ```bash
-curl -fsSLO https://raw.githubusercontent.com/klowerg/Unknown-Agent/main/scripts/install.sh
+curl -fsSLO https://raw.githubusercontent.com/flormariap/unknown-agent/main/scripts/install.sh
 less install.sh          # inspect what you are about to execute
 sh install.sh            # picks pipx > uv > managed venv, verifies, offers setup
 ```
@@ -75,9 +75,9 @@ sha256sum -c SHA256SUMS --ignore-missing
 ### Other paths
 
 ```bash
-pip install --user "git+https://github.com/klowerg/Unknown-Agent"                  # plain pip
+pip install --user "git+https://github.com/flormariap/unknown-agent"                  # plain pip
 python3 -m venv .venv && .venv/bin/pip install "unknown-agent[all]"     # your own venv
-py -m pip install --user pipx && pipx install "git+https://github.com/klowerg/Unknown-Agent"   # Windows (PowerShell)
+py -m pip install --user pipx && pipx install "git+https://github.com/flormariap/unknown-agent"   # Windows (PowerShell)
 ```
 
 ### After install
@@ -190,7 +190,7 @@ externally managed, hence the flag):
 
 ```bash
 python3 -m pip install --break-system-packages --upgrade \
-  "git+https://github.com/klowerg/Unknown-Agent.git@v1.6.0"
+  "git+https://github.com/flormariap/unknown-agent.git@v1.6.0"
 ```
 
 Login accepts the token, or a browser can request access and show a 6-digit code the

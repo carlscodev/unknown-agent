@@ -12,7 +12,7 @@
   * `MAJOR` — ruptura de CLI, API de plugins o formato en disco.
   * `MINOR` — nuevos comandos, providers, gates, memoria, skills.
   * `PATCH` — bugfix, pulido TUI, parsing, perf. (ej. fix UNLI 1.1.0 → 1.1.1)
-* **Detección por el programa:** `ua version` lee `__version__`; `ua upgrade --check` compara contra PyPI (`https://pypi.org/pypi/unknown-agent/json`) y, si la instalación vino de `git+https`, `host/install.py:upgrade_command_for` genera `pip install --upgrade git+https://github.com/klowerg/Unknown-Agent.git@vX.Y.Z`.
+* **Detección por el programa:** `ua version` lee `__version__`; `ua upgrade --check` compara contra PyPI (`https://pypi.org/pypi/unknown-agent/json`) y, si la instalación vino de `git+https`, `host/install.py:upgrade_command_for` genera `pip install --upgrade git+https://github.com/flormariap/unknown-agent.git@vX.Y.Z`.
 
 **Checklist obligatorio en cada PR/commit a `main`:**
 
@@ -50,14 +50,14 @@ git -c credential.helper='!f() { echo "username=x-access-token"; echo "password=
     push origin v1.1.5
 unset GITHUB_TOKEN
 # Verifica que el remote quedó limpio:
-git remote -v  # debe mostrar https://github.com/klowerg/Unknown-Agent.git SIN token
+git remote -v  # debe mostrar https://github.com/flormariap/unknown-agent.git SIN token
 ```
 
-* Usa PAT **fine-grained**, `contents: write` solo a `klowerg/Unknown-Agent`, expiración corta. Si se pegó en chat/log, **revócalo** en https://github.com/settings/tokens.
+* Usa PAT **fine-grained**, `contents: write` solo a `flormariap/unknown-agent`, expiración corta. Si se pegó en chat/log, **revócalo** en https://github.com/settings/tokens.
 * El workflow `release.yml` verifica `tag == __version__`, corre tests, construye `sdist+wheel`, genera `SHA256SUMS` y crea el GitHub Release. El usuario puede verificar:
   ```bash
-  curl -fsSLO https://github.com/klowerg/Unknown-Agent/releases/latest/download/install.sh
-  curl -fsSLO https://github.com/klowerg/Unknown-Agent/releases/latest/download/SHA256SUMS
+  curl -fsSLO https://github.com/flormariap/unknown-agent/releases/latest/download/install.sh
+  curl -fsSLO https://github.com/flormariap/unknown-agent/releases/latest/download/SHA256SUMS
   sha256sum -c SHA256SUMS --ignore-missing && sh install.sh
   ```
 
@@ -79,19 +79,19 @@ ua upgrade --yes   # detecta modo (pipx/uv-tool/bootstrap/venv) y corre el coman
 
 ```bash
 # pip / venv
-pip install --upgrade git+https://github.com/klowerg/Unknown-Agent.git@v1.1.5
+pip install --upgrade git+https://github.com/flormariap/unknown-agent.git@v1.1.5
 # o latest sin tag
-pip install --upgrade git+https://github.com/klowerg/Unknown-Agent.git
+pip install --upgrade git+https://github.com/flormariap/unknown-agent.git
 
 # pipx
 pipx upgrade unknown-agent
 # si falla porque vino de git:
-pipx install --force git+https://github.com/klowerg/Unknown-Agent.git@v1.1.5
+pipx install --force git+https://github.com/flormariap/unknown-agent.git@v1.1.5
 
 # uv
 uv tool upgrade unknown-agent
 # o
-uv tool install --force git+https://github.com/klowerg/Unknown-Agent.git@v1.1.5
+uv tool install --force git+https://github.com/flormariap/unknown-agent.git@v1.1.5
 
 # nativo (auto-detecta tu modo)
 ua upgrade --check   # muestra 1.1.1 -> 1.1.5

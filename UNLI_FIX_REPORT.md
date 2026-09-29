@@ -1,8 +1,8 @@
 # UNLI Provider Fix — https://api.unli.dev/v1
 
-**Date:** 2026-09-21  
-**Repo:** https://github.com/klowerg/Unknown-Agent.git (iterated in place, no restart)  
-**Base URL:** `https://api.unli.dev/v1`  
+**Date:** 2026-09-21
+**Repo:** https://github.com/flormariap/unknown-agent.git (iterated in place, no restart)
+**Base URL:** `https://api.unli.dev/v1`
 **Placeholders:** `API_TOKEN:` and `KEY:` (no secret is hardcoded, logged, or committed)
 
 ---
@@ -266,9 +266,9 @@ ua setup
 ```
 
 1. In the provider list, type nothing or `custom` → select **➕ Add custom endpoint — any base URL**.
-2. **Base URL:** `https://api.unli.dev/v1`  
-   **Display name:** `unli` (or `my-gateway`)  
-   **API compatibility:** **OpenAI-compatible** (or `Auto-detect` if unsure)  
+2. **Base URL:** `https://api.unli.dev/v1`
+   **Display name:** `unli` (or `my-gateway`)
+   **API compatibility:** **OpenAI-compatible** (or `Auto-detect` if unsure)
    Confirm.
 3. Paste `KEY:` → model screen. If the gateway lists no models, the header will read “no model list returned — you can type a model id” and the typed input is focused: type `unli-auto` (or `auto`) and press Enter.
 4. Confirm → profile written with the chosen compat:
