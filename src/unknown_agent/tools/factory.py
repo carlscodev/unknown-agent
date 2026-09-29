@@ -51,6 +51,8 @@ def build_default_registry(
         browser_tools,
         exec_tools,
         fs_tools,
+        git_tools,
+        lsp_tools,
         memory_tools,
         repo_tools,
         test_runner_tools,
@@ -71,12 +73,14 @@ def build_default_registry(
             if tool.category in wanted or (tool.category == "filesystem" and "filesystem" in wanted) or (tool.category == "search" and "search" in wanted):
                 registry.register(tool, source="builtin")
     add(repo_tools.build_tools(), "repo")
+    add(git_tools.build_tools(), "repo")
     add(exec_tools.build_tools(), "execution")
     add(memory_tools.build_tools(), "memory")
     add(validation_tools.build_tools(), "validation")
     # Structure-aware editing and background test execution. Registered by their
     # own category so `[tools] categories` filtering keeps working per tool.
     add(ast_tools.build_tools(), "analysis")
+    add(lsp_tools.build_tools(), "analysis")
     add(test_runner_tools.build_tools(), "validation")
 
     # Advanced tools span several categories (analysis, scaffold, docs, planning,
