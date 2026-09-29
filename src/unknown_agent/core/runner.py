@@ -479,6 +479,8 @@ class Runner:
             user_dir=self.paths.user_plugins_dir,
             project_dir=self.paths.project_dir / "plugins",
             disabled=self.settings.plugins.disabled,
+            require_signed=self.settings.plugins.require_signed,
+            trust_store_path=self.paths.config_dir / "trusted_publishers.json",
         )
         self.plugins = manager.load(registry=self.registry, settings=self.settings)
 

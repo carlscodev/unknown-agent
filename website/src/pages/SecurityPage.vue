@@ -8,6 +8,7 @@ const controls = [
  ["Process containment", "No-shell execution by default, timeouts and process-group cancellation prevent orphan workloads."],
  ["Auditable history", "Mission and session events retain identity, causality, inputs, outputs and cryptographic integrity links."],
  ["Controlled access", "The web control plane uses rotating bearer tokens, role-aware sessions and explicit six-digit device pairing."],
+ ["Signed extensions", "Ed25519 manifests bind publisher trust, exact source hashes, runtime compatibility, permissions and declared capabilities before code import."],
 ];
 </script>
 <template><div><PageHero eyebrow="SECURITY" title="Agency without surrendering control." lead="Autonomy increases the cost of weak boundaries. Unknown Agent treats policy, provenance and cancellation as runtime fundamentals—not optional wrappers."><div class="security-badge"><UiIcon name="shield" :size="26" /><div><b>Open security model</b><span>Inspectable source · MIT license · self-hosted control plane</span></div></div></PageHero>

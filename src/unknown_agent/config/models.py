@@ -355,6 +355,10 @@ class TelemetryConfig(_Base):
 class PluginsConfig(_Base):
     enabled: bool = True
     allow_entry_points: bool = True
+    require_signed: bool = Field(
+        True,
+        description="Reject extension code without a trusted Ed25519 capability manifest.",
+    )
     disabled: list[str] = Field(default_factory=list)
     extra_paths: list[str] = Field(default_factory=list)
     auto_load_procedures: bool = True

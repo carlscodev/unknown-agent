@@ -12,7 +12,7 @@ export const capabilities = [
 
 export const phases = [
   { n: "01", status: "Complete", title: "Coding core", text: "Mission runtime, LSP intelligence, isolated worktrees, durable forks, tiered compaction and transactional mutations—all shipped." },
-  { n: "02", status: "Next", title: "Extensible runtime", text: "Signed capabilities, hook bus, persistent scheduling, sandbox profiles and stable RPC/ACP." },
+  { n: "02", status: "Building", title: "Extensible runtime", text: "Signed capability manifests are live; hook bus, persistent scheduling, sandbox profiles and stable RPC/ACP follow." },
   { n: "03", status: "Planned", title: "Omnichannel gateway", text: "Channel-neutral envelopes, Telegram, Discord, Slack, WhatsApp, Matrix, ACLs and device delegation." },
   { n: "04", status: "Planned", title: "Product ecosystem", text: "Desktop and mobile clients, secure marketplace, benchmarks, migrations, SBOMs and attestations." },
 ];

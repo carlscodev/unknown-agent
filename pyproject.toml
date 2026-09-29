@@ -54,6 +54,8 @@ dependencies = [
   "python-multipart>=0.0.9",
   "pypdf>=4.0",
   "typing-extensions>=4.12",
+  # Ed25519 verification for signed extension capability manifests.
+  "cryptography>=43.0",
 ]
 
 [project.optional-dependencies]
@@ -82,11 +84,11 @@ ua = "unknown_agent.cli.app:main"
 unknown-agent = "unknown_agent.cli.app:main"
 
 [project.urls]
-Homepage = "https://github.com/unknown-agent/unknown-agent"
-Documentation = "https://github.com/unknown-agent/unknown-agent/tree/main/docs"
-Repository = "https://github.com/unknown-agent/unknown-agent"
-Changelog = "https://github.com/unknown-agent/unknown-agent/blob/main/CHANGELOG.md"
-Issues = "https://github.com/unknown-agent/unknown-agent/issues"
+Homepage = "https://github.com/flormariap/unknown-agent"
+Documentation = "https://github.com/flormariap/unknown-agent/tree/main/docs"
+Repository = "https://github.com/flormariap/unknown-agent"
+Changelog = "https://github.com/flormariap/unknown-agent/blob/main/CHANGELOG.md"
+Issues = "https://github.com/flormariap/unknown-agent/issues"
 
 [project.entry-points."unknown_agent.plugins"]
 # Third-party distributions register plugins here:  myplugin = "my_pkg.plugin:UnknownAgentPlugin"

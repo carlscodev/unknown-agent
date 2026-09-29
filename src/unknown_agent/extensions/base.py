@@ -17,9 +17,8 @@ broken third-party package can never stop the agent from starting.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any, Protocol, runtime_checkable
 
 from unknown_agent.observability.logging import get_logger
@@ -49,6 +48,10 @@ class PluginRecord:
     gates: list[str] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
     fact_kinds: list[str] = field(default_factory=list)
+    manifest_verified: bool = False
+    publisher: str = ""
+    key_id: str = ""
+    permissions: list[str] = field(default_factory=list)
     error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -62,6 +65,10 @@ class PluginRecord:
             "gates": self.gates,
             "commands": self.commands,
             "fact_kinds": self.fact_kinds,
+            "manifest_verified": self.manifest_verified,
+            "publisher": self.publisher,
+            "key_id": self.key_id,
+            "permissions": self.permissions,
             "error": self.error,
         }
 
@@ -77,37 +84,117 @@ class PluginContext:
     gates: list[Any] = field(default_factory=list)
     fact_kinds: list[str] = field(default_factory=list)
     record: PluginRecord | None = None
+    manifest: Any = None
     extra: dict[str, Any] = field(default_factory=dict)
+    _pending_tools: list[tuple[Any, bool]] = field(default_factory=list)
+    _pending_providers: list[tuple[str, Callable[..., Any], bool]] = field(default_factory=list)
+    _pending_gates: list[Any] = field(default_factory=list)
+    _pending_fact_kinds: list[str] = field(default_factory=list)
+    _pending_commands: list[tuple[str, Callable[..., Any], str]] = field(default_factory=list)
 
     # -- registration ------------------------------------------------------
+    def begin_registration(self, record: PluginRecord, manifest: Any = None) -> None:
+        self.discard_registration()
+        self.record = record
+        self.manifest = manifest
+
+    def discard_registration(self) -> None:
+        self._pending_tools.clear()
+        self._pending_providers.clear()
+        self._pending_gates.clear()
+        self._pending_fact_kinds.clear()
+        self._pending_commands.clear()
+        self.record = None
+        self.manifest = None
+
     def add_tool(self, tool: Any, *, overwrite: bool = False) -> None:
         if self.registry is None:
             raise RuntimeError("tool registry is not available in this context")
-        self.registry.register(tool, overwrite=overwrite, source="plugin")
-        if self.record is not None:
-            self.record.tools.append(getattr(tool, "name", str(tool)))
+        name = getattr(tool, "name", "")
+        risk = getattr(getattr(tool, "risk", None), "value", "")
+        self._authorise("tool", name, "tools.register", risk=risk)
+        from unknown_agent.extensions.manifest import required_tool_permission
+
+        self._require_permission(required_tool_permission(risk))
+        self._pending_tools.append((tool, overwrite))
 
     def add_provider(self, name: str, factory: Callable[..., Any], *, overwrite: bool = True) -> None:
-        from unknown_agent.providers.registry import register_provider
-
-        register_provider(name, factory, overwrite=overwrite)
-        if self.record is not None:
-            self.record.providers.append(name)
+        self._authorise("provider", name, "providers.register")
+        self._pending_providers.append((name, factory, overwrite))
 
     def add_gate(self, gate: Any) -> None:
-        self.gates.append(gate)
-        if self.record is not None:
-            self.record.gates.append(getattr(gate, "name", str(gate)))
+        name = getattr(gate, "name", str(gate))
+        self._authorise("gate", name, "gates.register")
+        self._pending_gates.append(gate)
 
     def add_fact_kind(self, kind: str) -> None:
-        self.fact_kinds.append(kind)
-        if self.record is not None:
-            self.record.fact_kinds.append(kind)
+        self._authorise("fact_kind", kind, "memory.extend")
+        self._pending_fact_kinds.append(kind)
 
     def add_command(self, name: str, handler: Callable[..., Any], *, help_text: str = "") -> None:
-        self.commands[name] = handler
-        if self.record is not None:
-            self.record.commands.append(name)
+        self._authorise("command", name, "commands.register")
+        self._pending_commands.append((name, handler, help_text))
+
+    def commit_registration(self) -> None:
+        """Publish a fully validated registration batch without partial tools."""
+
+        if self.record is None:
+            raise RuntimeError("no plugin registration is active")
+        if self.registry is not None:
+            names = [getattr(tool, "name", "") for tool, _ in self._pending_tools]
+            if len(names) != len(set(names)):
+                raise RuntimeError("plugin attempted to register duplicate tool names")
+            for tool, overwrite in self._pending_tools:
+                existing = self.registry.maybe_get(tool.name)
+                if existing is not None and not overwrite:
+                    raise RuntimeError(f"tool {tool.name!r} is already registered")
+        registered: list[tuple[str, Any | None]] = []
+        try:
+            for tool, overwrite in self._pending_tools:
+                previous = self.registry.maybe_get(tool.name) if self.registry is not None else None
+                self.registry.register(tool, overwrite=overwrite, source="plugin")
+                registered.append((tool.name, previous))
+            from unknown_agent.providers.registry import register_provider
+
+            for name, factory, overwrite in self._pending_providers:
+                register_provider(name, factory, overwrite=overwrite)
+            self.gates.extend(self._pending_gates)
+            self.fact_kinds.extend(self._pending_fact_kinds)
+            for name, handler, _help_text in self._pending_commands:
+                self.commands[name] = handler
+        except Exception:
+            if self.registry is not None:
+                for name, previous in reversed(registered):
+                    self.registry.unregister(name)
+                    if previous is not None:
+                        self.registry.register(previous, overwrite=True, source="restored")
+            raise
+        self.record.tools.extend(name for name, _previous in registered)
+        self.record.providers.extend(name for name, _factory, _overwrite in self._pending_providers)
+        self.record.gates.extend(getattr(item, "name", str(item)) for item in self._pending_gates)
+        self.record.fact_kinds.extend(self._pending_fact_kinds)
+        self.record.commands.extend(name for name, _handler, _help in self._pending_commands)
+        self._pending_tools.clear()
+        self._pending_providers.clear()
+        self._pending_gates.clear()
+        self._pending_fact_kinds.clear()
+        self._pending_commands.clear()
+
+    def _authorise(self, kind: str, name: str, permission: str, *, risk: str = "") -> None:
+        if self.manifest is None:
+            return
+        self._require_permission(permission)
+        declaration = self.manifest.declares(kind, name)
+        if declaration is None:
+            raise PermissionError(f"capability {kind}:{name} is not declared in the signed manifest")
+        if kind == "tool" and declaration.risk != risk:
+            raise PermissionError(
+                f"tool {name!r} declares risk {declaration.risk!r} but registered as {risk!r}"
+            )
+
+    def _require_permission(self, permission: str) -> None:
+        if self.manifest is not None and permission not in self.manifest.permissions:
+            raise PermissionError(f"manifest does not grant permission {permission!r}")
 
     # -- convenience -------------------------------------------------------
     def config(self, section: str, default: Any = None) -> Any:

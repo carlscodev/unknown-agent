@@ -214,7 +214,7 @@ ua runs …                   list | show | events | resume | prune
 ua sessions …               list | show | rm
 ua browser …                open | flow | screenshot | console
 ua tools …                  list | describe | call        (direct tool invocation)
-ua plugins …               list | new | enable | disable | info
+ua plugins …               list | new | keygen | trust | sign | verify | enable | disable | info
 ua context …               build | show | tokens
 ua log …                   tail | path | level
 ua upgrade                  Check/perform upgrade of the installed CLI
@@ -299,9 +299,11 @@ from logs, events and run journals by a process-wide redactor.
   agent loop, the CLI and the plugin system.
 * **Providers**: implement the `ModelProvider` protocol; ship it as a plugin.
 * **Gates**: add `validation.custom_gate_commands` entries or a `Gate` subclass.
-* **Plugins**: packaged entry points under `unknown_agent.plugins`, discovered
-  from installed distributions plus `~/.config/unknown-agent/plugins` and
-  `<repo>/.unknown/plugins`.
+* **Signed plugins**: packaged entry points under `unknown_agent.plugins`, plus
+  `~/.config/unknown-agent/plugins` and `<repo>/.unknown/plugins`. Ed25519
+  capability manifests are verified before import; source hashes, runtime API,
+  publisher trust, permissions, declared contributions and tool risk must all
+  match. See [`docs/plugins.md`](docs/plugins.md).
 
 ## Documentation
 
