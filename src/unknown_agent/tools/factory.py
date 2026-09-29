@@ -54,6 +54,7 @@ def build_default_registry(
         git_tools,
         lsp_tools,
         memory_tools,
+        mutation_tools,
         repo_tools,
         session_graph_tools,
         test_runner_tools,
@@ -73,6 +74,7 @@ def build_default_registry(
         for tool in fs_tools.build_tools():
             if tool.category in wanted or (tool.category == "filesystem" and "filesystem" in wanted) or (tool.category == "search" and "search" in wanted):
                 registry.register(tool, source="builtin")
+    add(mutation_tools.build_tools(), "filesystem")
     add(repo_tools.build_tools(), "repo")
     add(git_tools.build_tools(), "repo")
     add(exec_tools.build_tools(), "execution")

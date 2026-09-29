@@ -36,17 +36,19 @@ No implementation in this program copies proprietary Claude Code material.
 
 ## Program phases
 
-### Phase 1 — Coding Core Supremacy
+### Phase 1 — Coding Core Supremacy — Complete
 
-1. Persistent LSP supervisor and typed tools: symbols, definition, references,
-   hover, diagnostics and workspace rename.
-2. Mission worktree manager: one isolated branch per parallel worker, collision
-   detection, semantic commits, merge previews and deterministic cleanup.
-3. Event-sourced session forks with named lanes and reproducible snapshots.
-4. Tiered context compaction: immutable prefix, repository map, active working
-   set, archive summary and volatile tail.
-5. Transactional mutation queue: patches are staged, parsed, tested and only
-   then consolidated.
+1. **Shipped:** persistent LSP supervisor and typed tools for symbols,
+   definitions, references, hover, diagnostics and workspace rename.
+2. **Shipped:** mission worktree manager with isolated branches, collision
+   detection, merge previews, ownership leases and deterministic cleanup.
+3. **Shipped:** event-sourced session forks with historical branch points,
+   deterministic replay, semantic merge previews and hash-chain integrity.
+4. **Shipped:** three-tier context compaction with immutable task anchors,
+   causal tails, durable source replay and scoped telemetry.
+5. **Shipped:** transactional mutation queues with optimistic fingerprints,
+   policy preflight, validation gates, full snapshots, real cancellation,
+   reverse rollback and crash recovery.
 
 ### Phase 2 — Extensible Autonomous Runtime
 

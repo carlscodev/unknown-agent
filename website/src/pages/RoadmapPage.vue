@@ -3,7 +3,7 @@ import PageHero from "../components/PageHero.vue";
 import { phases } from "../content.js";
 const detail=[
  ['Foundation shipped',['Typed reasoning protocol','Durable mission engine','AST and repository intelligence','Provider routing and prompt caching','Web control plane and event stream']],
- ['Coding core in progress',['Persistent LSP tools','Mission-linked Git worktrees','Event-sourced session forks','Tiered context compaction','Transactional mutation queues']],
+ ['Coding core shipped',['Persistent LSP tools','Mission-linked Git worktrees','Event-sourced session forks','Tiered context compaction','Transactional mutation queues']],
  ['Extensible runtime',['Signed capability manifests','Hook and event bus','Cron and webhook scheduler','Sandbox profiles','Stable RPC / ACP service']],
  ['Omnichannel & ecosystem',['Telegram, Discord and Slack','WhatsApp and Matrix','Desktop and mobile clients','Extension marketplace','Benchmarks, SBOM and attestations']],
 ];
