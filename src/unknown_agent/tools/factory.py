@@ -55,6 +55,7 @@ def build_default_registry(
         lsp_tools,
         memory_tools,
         repo_tools,
+        session_graph_tools,
         test_runner_tools,
         validation_tools,
     )
@@ -76,6 +77,7 @@ def build_default_registry(
     add(git_tools.build_tools(), "repo")
     add(exec_tools.build_tools(), "execution")
     add(memory_tools.build_tools(), "memory")
+    add(session_graph_tools.build_tools(), "memory")
     add(validation_tools.build_tools(), "validation")
     # Structure-aware editing and background test execution. Registered by their
     # own category so `[tools] categories` filtering keeps working per tool.
