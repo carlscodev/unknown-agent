@@ -31,7 +31,7 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -45,6 +45,7 @@ from unknown_agent.version import __version__
 from unknown_agent.web.agent_loop import WebAgent
 from unknown_agent.web.attachments import AttachmentStore
 from unknown_agent.web.auth import WebAuthStore
+from unknown_agent.web.missions import build_mission_router
 
 log = get_logger(__name__)
 
@@ -1211,6 +1212,21 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         if not _owner(request):
             return _unauth()
         return JSONResponse({"token": auth.rotate_owner_token()})
+
+    # -- mission control ------------------------------------------------------- #
+    # Mounted before the SPA catch-all, which would otherwise swallow /api/missions.
+    # The guard reuses the panel's own session check, so mission control is exactly
+    # as protected as the rest of the API rather than quietly opening a back door.
+    def _mission_guard(request: Request) -> None:
+        if _session_of(request) is None:
+            raise HTTPException(status_code=401, detail="authentication required")
+
+    try:
+        app.include_router(
+            build_mission_router(project_root=paths.cwd, guard=_mission_guard)
+        )
+    except Exception as exc:  # noqa: BLE001 - the panel must still boot without it
+        log.warning("mission control endpoints unavailable: %s", exc)
 
     # -- static / SPA ----------------------------------------------------------- #
     resolved_static = Path(static_dir) if static_dir else None

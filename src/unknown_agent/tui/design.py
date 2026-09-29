@@ -102,27 +102,28 @@ class Tokens:
         return f"bold {self.dim}"
 
 
-#: Dark theme. A cool neutral grey ramp (slate, gently blue-shifted so it does not
-#: look muddy next to the accent) with a single restrained blue.
+#: Obsidian Emerald — high-contrast basalt surfaces with emerald activity and
+#: violet deep reasoning.  The colours mirror ``ui.theme_defs`` so CLI and TUI
+#: never present different identities for the same semantic state.
 DARK = Tokens(
-    key="quiet-dark",
+    key="obsidian-emerald",
     mode="dark",
-    bg="#0e1013",
-    surface="#14171c",
-    raised="#191d23",
-    overlay="#05070a",
-    text="#e6e8ea",
-    dim="#b6bbc2",
-    muted="#848b95",
-    faint="#575d66",
-    border="#252a31",
-    border_strong="#3a424c",
-    accent="#7aa2d2",       # muted slate blue — present, never loud
-    accent_dim="#43617f",
-    ok="#7fb894",           # sage
-    warn="#d4a76a",         # amber, desaturated
-    err="#cf8a85",          # clay red, not fire-engine
-    info="#8fa8bf",
+    bg="#0d1117",
+    surface="#161b22",
+    raised="#21262d",
+    overlay="#090c10",
+    text="#f0f6fc",
+    dim="#c9d1d9",
+    muted="#8b949e",
+    faint="#6e7681",
+    border="#30363d",
+    border_strong="#10b981",
+    accent="#10b981",
+    accent_dim="#064e3b",
+    ok="#10b981",
+    warn="#f59e0b",
+    err="#ef4444",
+    info="#8b5cf6",
 )
 
 #: Light theme, same structure. Warm-neutral paper rather than pure white, which is
