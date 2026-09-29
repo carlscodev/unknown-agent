@@ -274,6 +274,41 @@ def _register(palette: Palette) -> Palette:
 # -- dark ------------------------------------------------------------------ #
 _register(
     _p(
+        "obsidian-emerald",
+        "Obsidian Emerald",
+        "dark",
+        "Basalt surfaces, emerald activity and violet reasoning — the tactical cockpit default.",
+        inspired_by="enterprise terminal cockpits",
+        tui={"background": "#0d1117", "panel": "#161b22", "cursor": "#10b981"},
+        brand="#10b981",
+        brand_deep="#059669",
+        brand_soft="#064e3b",
+        accent="#8b5cf6",
+        accent_soft="#4c1d95",
+        ok="#10b981",
+        warn="#f59e0b",
+        err="#ef4444",
+        info="#38bdf8",
+        text="#f0f6fc",
+        text_dim="#c9d1d9",
+        text_muted="#8b949e",
+        text_faint="#6e7681",
+        surface="#0d1117",
+        surface_raised="#161b22",
+        surface_sunken="#090c10",
+        border="#30363d",
+        border_dim="#21262d",
+        selection="#064e3b",
+        diff_add="#238636",
+        diff_del="#da3633",
+        diff_hunk="#8b5cf6",
+        code="#f0f6fc",
+        link="#58a6ff",
+    )
+)
+
+_register(
+    _p(
         "midnight",
         "Midnight",
         "dark",
@@ -555,6 +590,7 @@ _register(
 
 #: Presentation order: darks first (the product default), then lights.
 PALETTE_ORDER: tuple[str, ...] = (
+    "obsidian-emerald",
     "midnight",
     "abyss",
     "ember",
@@ -565,14 +601,16 @@ PALETTE_ORDER: tuple[str, ...] = (
     "frost",
 )
 
-DEFAULT_THEME = "midnight"
+DEFAULT_THEME = "obsidian-emerald"
 DARK_THEMES: tuple[str, ...] = tuple(k for k in PALETTE_ORDER if PALETTES[k].mode == "dark")
 LIGHT_THEMES: tuple[str, ...] = tuple(k for k in PALETTE_ORDER if PALETTES[k].mode == "light")
 
 #: Aliases a user might reasonably type.
 _ALIASES: dict[str, str] = {
     "default": DEFAULT_THEME,
-    "dark": "midnight",
+    "dark": "obsidian-emerald",
+    "emerald": "obsidian-emerald",
+    "obsidian": "obsidian-emerald",
     "light": "paper",
     "oled": "abyss",
     "solar": "ember",

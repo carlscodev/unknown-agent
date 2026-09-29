@@ -23,7 +23,20 @@ LogFormat = Literal["text", "json"]
 #: Visual identity.  ``auto`` resolves to a concrete palette at load time from the
 #: terminal environment; the resolved value is what gets reported by
 #: ``ua config show --explain`` so nothing is ambiguous after the fact.
-ThemeChoice = Literal["auto", "dark", "light", "midnight", "abyss", "ember", "aurora", "nocturne", "paper", "linen", "frost"]
+ThemeChoice = Literal[
+    "auto",
+    "dark",
+    "light",
+    "obsidian-emerald",
+    "midnight",
+    "abyss",
+    "ember",
+    "aurora",
+    "nocturne",
+    "paper",
+    "linen",
+    "frost",
+]
 ThemeMode = Literal["dark", "light"]
 GlyphSet = Literal["unicode", "ascii", "nerd"]
 UiDensity = Literal["comfortable", "compact", "spacious"]

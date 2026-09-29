@@ -46,7 +46,16 @@ def build_default_registry(
 ) -> ToolRegistry:
     """Assemble the registry for the current settings."""
 
-    from unknown_agent.tools.builtin import browser_tools, exec_tools, fs_tools, memory_tools, repo_tools, validation_tools
+    from unknown_agent.tools.builtin import (
+        ast_tools,
+        browser_tools,
+        exec_tools,
+        fs_tools,
+        memory_tools,
+        repo_tools,
+        test_runner_tools,
+        validation_tools,
+    )
 
     registry = ToolRegistry()
     wanted = categories or BUILTIN_CATEGORIES
@@ -65,6 +74,10 @@ def build_default_registry(
     add(exec_tools.build_tools(), "execution")
     add(memory_tools.build_tools(), "memory")
     add(validation_tools.build_tools(), "validation")
+    # Structure-aware editing and background test execution. Registered by their
+    # own category so `[tools] categories` filtering keeps working per tool.
+    add(ast_tools.build_tools(), "analysis")
+    add(test_runner_tools.build_tools(), "validation")
 
     # Advanced tools span several categories (analysis, scaffold, docs, planning,
     # mcp, skills, browser) - register each against its own category so
