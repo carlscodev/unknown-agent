@@ -1,0 +1,9 @@
+<script setup>
+import PageHero from "../components/PageHero.vue";
+import UiIcon from "../components/UiIcon.vue";
+import { comparison } from "../content.js";
+</script>
+<template><div><PageHero eyebrow="COMPARE" title="Choose a runtime, not another chat window." lead="Unknown Agent is designed around durable execution and evidence. The distinction matters more as tasks become longer, riskier and more parallel." />
+<section class="section no-top"><div class="container"><div class="compare-table"><div class="tr head"><b>Capability</b><b>Unknown Agent</b><b>Cloud coding agent</b><b>Chat + tools</b></div><div v-for="row in comparison" :key="row[0]" class="tr"><strong>{{row[0]}}</strong><span v-for="(v,i) in row.slice(1)" :key="i" :class="{yes:v}"><UiIcon :name="v?'check':'close'" :size="17"/>{{v?'Included':'Limited'}}</span></div></div><p class="table-note">Category-level comparison based on commonly exposed product capabilities. Vendor features change; evaluate against your own requirements.</p></div></section>
+<section class="section dark-panel"><div class="container"><div class="section-head"><p class="eyebrow">WHEN IT FITS</p><h2>Built for work that cannot stop at “looks right.”</h2></div><div class="scenario-grid"><article><span>01</span><h3>Long migrations</h3><p>Durable checkpoints and resumable missions make multi-hour repository changes survivable.</p></article><article><span>02</span><h3>Regulated code</h3><p>Local execution, policy gates and replayable provenance keep operators in control.</p></article><article><span>03</span><h3>Parallel delivery</h3><p>Mission-owned worktrees isolate agents and semantic previews make merges legible.</p></article></div></div></section>
+<section class="section mini-cta"><div class="container"><h2>Test the difference on your own code.</h2><RouterLink class="button primary" to="/download">Install Unknown Agent <UiIcon name="arrow"/></RouterLink></div></section></div></template>
