@@ -198,6 +198,9 @@ def test_retry_after_wins_over_exponential_backoff_and_is_clamped() -> None:
     assert backoff_delay(1, retry_after=7.0, policy=policy) == pytest.approx(7.0)
     # A hostile or broken header must not stall the app for an hour.
     assert backoff_delay(1, retry_after=3600.0, policy=policy) == pytest.approx(60.0)
+    jittered = RetryPolicy(base_delay=0.8, jitter=0.25, max_retry_after=60.0)
+    assert backoff_delay(1, retry_after=7.0, policy=jittered, rng=lambda: 0.0) == 7.0
+    assert backoff_delay(1, retry_after=7.0, policy=jittered, rng=lambda: 1.0) >= 7.0
 
 
 def test_retry_after_is_read_from_real_httpx_headers() -> None:

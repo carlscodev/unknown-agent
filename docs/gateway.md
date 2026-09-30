@@ -30,7 +30,13 @@ ua gateway drain
 ua gateway worker --poll 1
 ```
 
-All output is JSON-safe for pipes and service supervisors. Real channel adapters register a transport and call `Gateway.receive`; they never write directly to agent internals. The integrated ACL layer binds `(channel, account, sender)` identities through one-time six-digit pairing codes. Codes are salted, hashed, single-use, expire within five minutes, and lock after five failed attempts. Roles (`viewer`, `operator`, `owner`) grant explicit permissions; revocation is immediate. Use `ua gateway pair-issue`, `pair-claim`, `identities`, and `revoke`. Concrete messaging adapters are the next Phase 3 layer.
+All output is JSON-safe for pipes and service supervisors. Real channel adapters register a transport and call `Gateway.receive`; they never write directly to agent internals. The integrated ACL layer binds `(channel, account, sender)` identities through one-time six-digit pairing codes. Codes are salted, hashed, single-use, expire within five minutes, and lock after five failed attempts. Roles (`viewer`, `operator`, `owner`) grant explicit permissions; revocation is immediate. Use `ua gateway pair-issue`, `pair-claim`, `identities`, and `revoke`.
+
+## Messaging adapters
+
+Production adapters now normalize Telegram Bot API updates, Slack Events API messages, and Discord interactions into the same envelope. Telegram webhook tokens use constant-time comparison; Slack verifies `v0` HMAC signatures and rejects requests older than five minutes; Discord verifies Ed25519 signatures before JSON parsing. Outbound transports call each platform's official HTTPS API with a 30-second client timeout. Bot/self messages are ignored.
+
+Adapter tokens and signing secrets must be `env:`, `file:`, `store:`, or `keyring:` references—raw secrets fail validation. Telegram media is represented as typed `telegram-file:` references for the media pipeline rather than embedding bytes. Instantiate `TelegramAdapter`, `SlackAdapter`, or `DiscordAdapter`, call `normalize`, pass the resulting envelope to `Gateway.receive`, and register each adapter's async `send` method as the channel transport.
 
 ## Security
 
