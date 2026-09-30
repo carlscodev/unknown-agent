@@ -46,6 +46,12 @@ WhatsApp Cloud API support verifies Meta's SHA-256 webhook signature, implements
 
 `TranscriptionService` accepts audio or video assets, calls a bounded transcriber, and caches immutable results by content digest, engine identity, and language. `SpeechAPITranscriber` provides a concrete OpenAI-compatible HTTPS multipart implementation with secret-reference-only authentication and a timeout ceiling of five minutes. Empty and oversized transcripts fail closed.
 
+## Device delegation
+
+Devices enroll through a five-minute, high-entropy one-time token and prove possession of an Ed25519 private key. Every subsequent device request signs its timestamp, unique nonce, and body digest; the controller rejects signatures outside a five-minute replay window and durably rejects reused nonces. Device capabilities are explicit and checked before a command enters the queue.
+
+Commands are durable, idempotent, bounded to 1 MiB, and atomically claimed under leases no longer than five minutes. Expired leases can be recovered without duplicate completion, retry counts are bounded, and results require the active lease token. Revoking a device immediately blocks authentication and cancels pending or running commands.
+
 ## Security
 
 - Process-wide secret redaction occurs before envelope persistence.

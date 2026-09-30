@@ -1,7 +1,8 @@
 <script setup>
 import PageHero from "../components/PageHero.vue";
 const changes=[
- {date:'Current',version:'phase 3.5',title:'Durable media and voice pipeline',items:['Bounded streaming ingestion into a content-addressed store','SHA-256, size and MIME integrity enforcement','Pluggable platform media resolvers and portable CAS references','Cached OpenAI-compatible speech transcription']},
+ {date:'Current',version:'phase 3.6',title:'Cryptographic device delegation',items:['Ed25519 proof-of-possession enrollment','Signed requests with durable nonce replay protection','Capability-scoped durable command queues and bounded leases','Immediate device revocation and command cancellation']},
+ {date:'Phase 3.5',version:'media and voice',title:'Durable media and voice pipeline',items:['Bounded streaming ingestion into a content-addressed store','SHA-256, size and MIME integrity enforcement','Pluggable platform media resolvers and portable CAS references','Cached OpenAI-compatible speech transcription']},
  {date:'Phase 3.4',version:'channel adapters',title:'WhatsApp and Matrix adapters',items:['Meta webhook signature and challenge verification','Batched WhatsApp text and media normalization','Authenticated Matrix incremental sync with durable cursors','Matrix replies, threads and transaction-scoped delivery']},
  {date:'Phase 3.3',version:'channel adapters',title:'Telegram, Discord and Slack adapters',items:['Telegram webhook verification and Bot API transport','Slack HMAC verification with replay-window enforcement','Discord Ed25519 interaction verification and REST transport','Secret-reference-only credentials and neutral media envelopes']},
  {date:'Phase 3.2',version:'secure access',title:'Gateway identity, ACL and secure pairing',items:['Channel/account/sender identity binding','Salted one-time six-digit codes with five-minute expiry','Viewer, operator and owner permission roles','Immediate revocation and fail-closed gateway authorization']},

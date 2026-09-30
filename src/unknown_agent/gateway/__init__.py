@@ -20,6 +20,13 @@ from unknown_agent.gateway.contracts import (
     OutboundDraft,
     OutboundEnvelope,
 )
+from unknown_agent.gateway.devices import (
+    Device,
+    DeviceCommand,
+    DeviceController,
+    DeviceError,
+    Enrollment,
+)
 from unknown_agent.gateway.media import (
     MediaAsset,
     MediaError,
@@ -45,8 +52,13 @@ __all__ = [
     "ContentKind",
     "ContentPart",
     "DeliveryState",
+    "Device",
+    "DeviceCommand",
+    "DeviceController",
+    "DeviceError",
     "DiscordAdapter",
     "DiscordConfig",
+    "Enrollment",
     "Gateway",
     "GatewayRecord",
     "Identity",
