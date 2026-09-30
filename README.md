@@ -319,6 +319,10 @@ from logs, events and run journals by a process-wide redactor.
 * **Stable ACP/RPC**: `ua acp` serves ACP v1 as bounded JSON-RPC 2.0 over stdio,
   with durable sessions, streaming updates, mode changes and cancellation mapped
   directly onto the canonical runner. See [`docs/rpc-acp.md`](docs/rpc-acp.md).
+* **Channel-neutral gateway**: a durable, deduplicated inbox and transactional
+  outbox normalize messaging text/media, recover expired leases, contain tampering,
+  and route into the same runner without channel-specific coupling. See
+  [`docs/gateway.md`](docs/gateway.md).
 
 ## Documentation
 
@@ -340,6 +344,7 @@ from logs, events and run journals by a process-wide redactor.
 | `docs/scheduler.md` | Persistent cron, interval, one-shot and signed-webhook automation |
 | `docs/sandbox.md` | Native containment profiles, fail-closed mode and timeout ceiling |
 | `docs/rpc-acp.md` | Stable JSON-RPC 2.0 and ACP v1 editor integration |
+| `docs/gateway.md` | Durable channel-neutral inbox, outbox and adapter contract |
 | `docs/roadmap.md` | v1 scope, phase two (TUI, dashboard, teams, cloud) |
 | `docs/development.md` | Local setup, tests, quality gates, release checklist |
 

@@ -13,6 +13,7 @@ const controls = [
  ["Signed automation", "Webhook secrets remain references; constant-time HMAC verification, idempotency keys, expiring leases, bounded retries and hash-linked audit records contain autonomous scheduling."],
  ["Native containment", "Workspace and isolated profiles use platform-native process, mount and network boundaries; required mode fails closed when its backend is unavailable."],
  ["Bounded ACP", "ACP sessions use strict JSON-RPC schemas, project-scoped working directories, atomic private metadata, concurrent cancellation and a five-minute request ceiling."],
+ ["Contained messaging", "Inbound deliveries are deduplicated and redacted before persistence; integrity checks, leases, bounded retries and a transactional outbox contain channel failures."],
 ];
 </script>
 <template><div><PageHero eyebrow="SECURITY" title="Agency without surrendering control." lead="Autonomy increases the cost of weak boundaries. Unknown Agent treats policy, provenance and cancellation as runtime fundamentals—not optional wrappers."><div class="security-badge"><UiIcon name="shield" :size="26" /><div><b>Open security model</b><span>Inspectable source · MIT license · self-hosted control plane</span></div></div></PageHero>

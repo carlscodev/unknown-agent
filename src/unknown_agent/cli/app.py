@@ -244,6 +244,7 @@ def _register_commands() -> None:
         config_cmd,
         context_cmd,
         doctor,
+        gateway,
         inspect,
         mcp_cmd,
         memory_cmd,
@@ -307,6 +308,7 @@ def _register_commands() -> None:
     app.add_typer(service.app, name="service", help="Optional background maintenance: systemd user units, manual runs.", rich_help_panel="Project")
     app.add_typer(scheduler.app, name="scheduler", help="Persistent cron and webhook automation.", rich_help_panel="Project")
     app.add_typer(sandbox.app, name="sandbox", help="Native subprocess containment profiles.", rich_help_panel="Project")
+    app.add_typer(gateway.app, name="gateway", help="Durable channel-neutral inbox and outbox.", rich_help_panel="Project")
     app.command("completion", rich_help_panel="Project")(misc.completion_command)
     app.add_typer(inspect.app, name="inspect", help="Repository intelligence: stack, commands, layout, risks.", rich_help_panel="Project")
 

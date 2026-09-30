@@ -180,6 +180,15 @@ and status. ACP prompts invoke `core.runner.run_task`; they do not bypass policy
 sandboxing, hooks, tools, providers, mission journals, or verification. The CLI
 entry point is `ua acp`. See [`rpc-acp.md`](rpc-acp.md).
 
+### Channel-neutral gateway
+
+`gateway/contracts.py` defines provider-independent addresses and typed text/media
+envelopes. `gateway/service.py` supplies a SQLite/WAL inbox, transactional outbox,
+delivery deduplication, atomic leases, restart recovery, integrity verification,
+bounded retries and dead letters. Async routes and transports are registry seams
+for channel adapters. The built-in route calls `core.runner.run_task`, preserving
+one execution and policy architecture. See [`gateway.md`](gateway.md).
+
 
 Doctor check groups: environment, config, toolchain, project, browser, provider, **mcp** (SDK presence, per-server launcher/URL sanity, pointer to `ua mcp test` for live probes), **vision** (routing verdict with the fixing knob, Pillow presence), credentials (`--network`).
 
