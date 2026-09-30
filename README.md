@@ -304,6 +304,9 @@ from logs, events and run journals by a process-wide redactor.
   capability manifests are verified before import; source hashes, runtime API,
   publisher trust, permissions, declared contributions and tool risk must all
   match. See [`docs/plugins.md`](docs/plugins.md).
+* **Durable hooks**: signed plugins can subscribe to filtered runtime events with
+  priority, timeout, retry, circuit breaking, cancellation and replay. Events are
+  secret-redacted before SQLite WAL persistence. See [`docs/hooks.md`](docs/hooks.md).
 
 ## Documentation
 
@@ -320,14 +323,15 @@ from logs, events and run journals by a process-wide redactor.
 | `docs/validation.md` | Gates, definition of done, self-heal policy |
 | `docs/browser.md` | Playwright subsystem, flows, evidence |
 | `docs/packaging.md` | pipx/uv/pip/standalone, Windows notes, CI matrices |
-| `docs/plugins.md` | Plugin API and lifecycle |
+| `docs/plugins.md` | Signed capability manifests, publisher trust and plugin lifecycle |
+| `docs/hooks.md` | Durable event hooks, retries, circuit breakers, cancellation and replay |
 | `docs/roadmap.md` | v1 scope, phase two (TUI, dashboard, teams, cloud) |
 | `docs/development.md` | Local setup, tests, quality gates, release checklist |
 
 ## Development
 
 ```bash
-git clone https://github.com/unknown-agent/unknown-agent
+git clone https://github.com/flormariap/unknown-agent
 cd unknown-agent
 python -m venv .venv && . .venv/bin/activate
 pip install -e ".[dev]"

@@ -30,10 +30,11 @@ Permission = Literal[
     "tools.destructive",
     "providers.register",
     "gates.register",
+    "hooks.register",
     "commands.register",
     "memory.extend",
 ]
-CapabilityKind = Literal["tool", "provider", "gate", "command", "fact_kind"]
+CapabilityKind = Literal["tool", "provider", "gate", "hook", "command", "fact_kind"]
 ToolRisk = Literal["read", "write", "execute", "network", "destructive"]
 
 

@@ -12,6 +12,7 @@ Events are additive and versioned: never repurpose a field, add a new one.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import time
 from collections.abc import Callable, Iterable
@@ -100,9 +101,16 @@ EventSink = Callable[[Event], None]
 class EventBus:
     """Fan-out dispatcher with optional JSONL persistence."""
 
-    def __init__(self, *, journal: Path | None = None, sinks: Iterable[EventSink] | None = None) -> None:
+    def __init__(
+        self,
+        *,
+        journal: Path | None = None,
+        sinks: Iterable[EventSink] | None = None,
+        hook_bus: Any = None,
+    ) -> None:
         self._sinks: list[EventSink] = list(sinks or [])
         self._journal = journal
+        self._hook_bus = hook_bus
         self._history: list[Event] = []
         self._keep_history = journal is None
         if journal is not None:
@@ -126,6 +134,11 @@ class EventBus:
     def journal(self) -> Path | None:
         return self._journal
 
+    def attach_hook_bus(self, hook_bus: Any) -> None:
+        """Route future events to a durable async hook bus without blocking emitters."""
+
+        self._hook_bus = hook_bus
+
     def subscribe(self, sink: EventSink) -> None:
         self._sinks.append(sink)
 
@@ -142,6 +155,9 @@ class EventBus:
                 pass
         else:
             self._history.append(event)
+        if self._hook_bus is not None:
+            with contextlib.suppress(Exception):
+                self._hook_bus.publish(event)
         for sink in list(self._sinks):
             try:
                 sink(event)

@@ -73,6 +73,7 @@ Publisher names must match the identity stored with the trusted key.
 | `tools.destructive` | A tool with `destructive` risk |
 | `providers.register` | Contributing a model provider |
 | `gates.register` | Contributing a validation gate |
+| `hooks.register` | Subscribing a declared async hook to runtime events |
 | `commands.register` | Contributing a command |
 | `memory.extend` | Contributing a memory fact kind |
 

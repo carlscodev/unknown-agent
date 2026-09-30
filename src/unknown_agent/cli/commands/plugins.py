@@ -41,7 +41,10 @@ def _manager(ctx: typer.Context, *, registry: Any = None) -> tuple[Runtime, Plug
         require_signed=loaded.settings.plugins.require_signed,
         trust_store_path=loaded.paths.config_dir / "trusted_publishers.json",
     )
-    manager.load(registry=tools_registry, settings=loaded.settings)
+    from unknown_agent.extensions.hooks import HookBus
+
+    hook_bus = HookBus(loaded.paths.project_dir / "hooks.db")
+    manager.load(registry=tools_registry, settings=loaded.settings, hook_bus=hook_bus)
     return runtime, manager, tools_registry
 
 

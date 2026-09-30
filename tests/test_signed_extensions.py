@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pytest
 
+from unknown_agent.extensions.hooks import HookBus
 from unknown_agent.extensions.loader import PluginManager
 from unknown_agent.extensions.manifest import (
     CapabilityDeclaration,
@@ -17,6 +18,7 @@ from unknown_agent.extensions.manifest import (
     sign_manifest,
     verify_manifest,
 )
+from unknown_agent.observability.events import Event
 from unknown_agent.tools.registry import ToolRegistry
 
 
@@ -83,7 +85,13 @@ def signed_plugin(
     return source, store, signed
 
 
-def manager(source: Path, store: TrustStore, *, require_signed: bool = True) -> tuple[PluginManager, ToolRegistry]:
+def manager(
+    source: Path,
+    store: TrustStore,
+    *,
+    require_signed: bool = True,
+    hook_bus: HookBus | None = None,
+) -> tuple[PluginManager, ToolRegistry]:
     registry = ToolRegistry()
     item = PluginManager(
         allow_entry_points=False,
@@ -91,7 +99,7 @@ def manager(source: Path, store: TrustStore, *, require_signed: bool = True) -> 
         require_signed=require_signed,
         trust_store_path=store.path,
     )
-    item.load(registry=registry, settings=object())
+    item.load(registry=registry, settings=object(), hook_bus=hook_bus)
     return item, registry
 
 
@@ -105,6 +113,40 @@ def test_trusted_signed_plugin_loads_and_registers_declared_tool(tmp_path: Path)
     assert record.publisher == "Test Publisher"
     assert record.key_id == signed.key_id
     assert record.permissions == ["tools.read", "tools.register"]
+
+
+def test_signed_plugin_registers_declared_durable_hook(tmp_path: Path) -> None:
+    marker = tmp_path / "hook-ran"
+    code = f'''
+from pathlib import Path
+from unknown_agent.extensions.hooks import HookSpec
+
+async def on_event(context):
+    Path({str(marker)!r}).write_text(context.event_type)
+
+class Plugin:
+    name = "demo-plugin"
+    version = "1.2.3"
+    def register(self, context):
+        context.add_hook(HookSpec(name="demo.audit", event_patterns=["gate.*"]), on_event)
+PLUGIN = Plugin()
+'''
+    source, store, _signed = signed_plugin(
+        tmp_path,
+        code=code,
+        permissions=["hooks.register"],
+        capabilities=[CapabilityDeclaration(kind="hook", name="demo.audit")],
+    )
+    hook_bus = HookBus(tmp_path / "hooks.db")
+    loaded, registry = manager(source, store, hook_bus=hook_bus)
+    assert not registry.names()
+    assert loaded.loaded[0].hooks == ["demo.audit"]
+    hook_bus.publish(Event(type="gate.finished"))
+    import asyncio
+
+    asyncio.run(hook_bus.drain())
+    assert marker.read_text() == "gate.finished"
+    asyncio.run(hook_bus.close())
 
 
 def test_unsigned_plugin_is_rejected_before_import(tmp_path: Path) -> None:

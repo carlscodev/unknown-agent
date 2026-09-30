@@ -171,6 +171,10 @@ class Runner:
         self._event_sink = event_sink
         self._apply_overrides()
         self.paths.ensure_project_dirs()
+        from unknown_agent.extensions.hooks import HookBus
+
+        self.hook_bus = HookBus(self.paths.project_dir / "hooks.db")
+        self.events.attach_hook_bus(self.hook_bus)
         self.project: ProjectContext | None = None
         self.provider = None
         self.registry: ToolRegistry | None = None
@@ -482,7 +486,9 @@ class Runner:
             require_signed=self.settings.plugins.require_signed,
             trust_store_path=self.paths.config_dir / "trusted_publishers.json",
         )
-        self.plugins = manager.load(registry=self.registry, settings=self.settings)
+        self.plugins = manager.load(
+            registry=self.registry, settings=self.settings, hook_bus=self.hook_bus
+        )
 
     # ------------------------------------------------------------------ #
     # execution
