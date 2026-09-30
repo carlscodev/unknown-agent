@@ -240,6 +240,7 @@ def _register_commands() -> None:
     from unknown_agent.cli.commands import (
         acp,
         agent,
+        benchmark,
         browser,
         config_cmd,
         context_cmd,
@@ -316,6 +317,7 @@ def _register_commands() -> None:
 
     # -- quality -----------------------------------------------------------
     app.command("verify", rich_help_panel="Quality")(verify.verify_command)
+    app.add_typer(benchmark.app, name="benchmark", help="Reproducible performance and reliability regression gates.", rich_help_panel="Quality")
     app.add_typer(browser.app, name="browser", help="Chromium validation: flows, screenshots, console, traces.", rich_help_panel="Quality")
     app.add_typer(vision_cmd.app, name="vision", help="Vision: capability matrix, routing status, image analysis.", rich_help_panel="Quality")
 

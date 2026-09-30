@@ -346,6 +346,7 @@ from logs, events and run journals by a process-wide redactor.
 | `docs/rpc-acp.md` | Stable JSON-RPC 2.0 and ACP v1 editor integration |
 | `docs/gateway.md` | Omnichannel gateway, media, voice and device delegation |
 | `docs/supply-chain.md` | Transactional migrations, SPDX SBOM and signed SLSA provenance |
+| `docs/benchmarks.md` | Reproducible performance and reliability regression gates |
 | `docs/roadmap.md` | v1 scope, phase two (TUI, dashboard, teams, cloud) |
 | `docs/development.md` | Local setup, tests, quality gates, release checklist |
 
