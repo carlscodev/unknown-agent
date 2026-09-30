@@ -40,6 +40,12 @@ Adapter tokens and signing secrets must be `env:`, `file:`, `store:`, or `keyrin
 
 WhatsApp Cloud API support verifies Meta's SHA-256 webhook signature, implements constant-time subscription challenge verification, normalizes batched text/media notifications, and sends through the versioned Graph API. Matrix support consumes authenticated incremental `/sync` batches, preserves `next_batch` cursors for restart-safe polling, ignores the agent's own events, maps replies and threads, and sends idempotent transaction-scoped room events. Matrix long-poll and HTTP timeouts are bounded at five minutes.
 
+## Media and voice pipeline
+
+`MediaStore` hydrates adapter media references through explicitly registered resolvers into a content-addressed store. Streaming ingestion enforces declared and actual size limits, MIME policy, optional upstream SHA-256, atomic publication, deduplication, and verification whenever an asset is read. Stored envelopes use portable `cas:<sha256>` references rather than platform credentials or temporary URLs.
+
+`TranscriptionService` accepts audio or video assets, calls a bounded transcriber, and caches immutable results by content digest, engine identity, and language. `SpeechAPITranscriber` provides a concrete OpenAI-compatible HTTPS multipart implementation with secret-reference-only authentication and a timeout ceiling of five minutes. Empty and oversized transcripts fail closed.
+
 ## Security
 
 - Process-wide secret redaction occurs before envelope persistence.
