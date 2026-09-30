@@ -1,7 +1,8 @@
 <script setup>
 import PageHero from "../components/PageHero.vue";
 const changes=[
- {date:'Current',version:'phase 4.2',title:'Reproducible benchmark gates',items:['Strict YAML performance and reliability suites','Durable samples with bounded secret-redacted output','Median, nearest-rank p95 and pass-rate summaries','Baseline comparison with machine-safe regression exits']},
+ {date:'Current',version:'phase 4.3',title:'Secure signed marketplace',items:['Pinned Ed25519 registry indexes with expiry and revocation','SHA-256-bound packages and traversal-safe bounded extraction','Publisher trust, capability manifests and permission verification','Atomic upgrades, downgrade protection and durable package state']},
+ {date:'Phase 4.2',version:'benchmark gates',title:'Reproducible benchmark gates',items:['Strict YAML performance and reliability suites','Durable samples with bounded secret-redacted output','Median, nearest-rank p95 and pass-rate summaries','Baseline comparison with machine-safe regression exits']},
  {date:'Phase 4.1',version:'release integrity',title:'Migrations and release supply chain',items:['Checksum-locked transactional SQLite migrations','Integrity-checked atomic database restore','Deterministic SPDX 2.3 software bills of materials','Ed25519 DSSE and SLSA provenance attestations']},
  {date:'Phase 3.6',version:'device delegation',title:'Cryptographic device delegation',items:['Ed25519 proof-of-possession enrollment','Signed requests with durable nonce replay protection','Capability-scoped durable command queues and bounded leases','Immediate device revocation and command cancellation']},
  {date:'Phase 3.5',version:'media and voice',title:'Durable media and voice pipeline',items:['Bounded streaming ingestion into a content-addressed store','SHA-256, size and MIME integrity enforcement','Pluggable platform media resolvers and portable CAS references','Cached OpenAI-compatible speech transcription']},

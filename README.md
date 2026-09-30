@@ -347,6 +347,7 @@ from logs, events and run journals by a process-wide redactor.
 | `docs/gateway.md` | Omnichannel gateway, media, voice and device delegation |
 | `docs/supply-chain.md` | Transactional migrations, SPDX SBOM and signed SLSA provenance |
 | `docs/benchmarks.md` | Reproducible performance and reliability regression gates |
+| `docs/marketplace.md` | Signed registry, package verification, revocation and atomic installs |
 | `docs/roadmap.md` | v1 scope, phase two (TUI, dashboard, teams, cloud) |
 | `docs/development.md` | Local setup, tests, quality gates, release checklist |
 

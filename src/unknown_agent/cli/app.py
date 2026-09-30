@@ -247,6 +247,7 @@ def _register_commands() -> None:
         doctor,
         gateway,
         inspect,
+        marketplace,
         mcp_cmd,
         memory_cmd,
         misc,
@@ -331,6 +332,7 @@ def _register_commands() -> None:
     app.add_typer(tools.app, name="tools", help="Tool catalog: list, describe, call directly.", rich_help_panel="Tools")
     app.add_typer(mcp_cmd.app, name="mcp", help="MCP servers: add, inspect, test, trust, expose.", rich_help_panel="Tools")
     app.add_typer(plugins.app, name="plugins", help="Install, inspect and scaffold plugins.", rich_help_panel="Tools")
+    app.add_typer(marketplace.app, name="marketplace", help="Install signed packages from a verified registry.", rich_help_panel="Tools")
     app.add_typer(skills.app, name="skills", help="Craft guidance the agent runs with: list, inspect, scaffold, audit.", rich_help_panel="Tools")
     app.add_typer(config_cmd.app, name="config", help="Inspect, validate and edit configuration.", rich_help_panel="Configuration")
 
