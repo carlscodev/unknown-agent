@@ -957,8 +957,14 @@ async def run_task(loaded: LoadedSettings, request: RunRequest, *, hooks: LoopHo
     """Convenience entry point used by the API and tests."""
 
     runner = Runner(loaded, request=request, hooks=hooks, event_sink=event_sink)
-    await runner.setup()
-    return await runner.execute()
+    try:
+        await runner.setup()
+        return await runner.execute()
+    finally:
+        with contextlib.suppress(Exception):
+            await runner.hook_bus.drain()
+        with contextlib.suppress(Exception):
+            await runner.hook_bus.close()
 
 
 __all__ = ["Runner", "RunRequest", "RunResult", "run_task"]

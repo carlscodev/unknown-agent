@@ -10,6 +10,9 @@ const controls = [
  ["Controlled access", "The web control plane uses rotating bearer tokens, role-aware sessions and explicit six-digit device pairing."],
  ["Signed extensions", "Ed25519 manifests bind publisher trust, exact source hashes, runtime compatibility, permissions and declared capabilities before code import."],
  ["Contained hooks", "Runtime hooks receive redacted events through timeout, retry, circuit-breaker and dead-letter boundaries; malformed output cannot stop a mission."],
+ ["Signed automation", "Webhook secrets remain references; constant-time HMAC verification, idempotency keys, expiring leases, bounded retries and hash-linked audit records contain autonomous scheduling."],
+ ["Native containment", "Workspace and isolated profiles use platform-native process, mount and network boundaries; required mode fails closed when its backend is unavailable."],
+ ["Bounded ACP", "ACP sessions use strict JSON-RPC schemas, project-scoped working directories, atomic private metadata, concurrent cancellation and a five-minute request ceiling."],
 ];
 </script>
 <template><div><PageHero eyebrow="SECURITY" title="Agency without surrendering control." lead="Autonomy increases the cost of weak boundaries. Unknown Agent treats policy, provenance and cancellation as runtime fundamentals—not optional wrappers."><div class="security-badge"><UiIcon name="shield" :size="26" /><div><b>Open security model</b><span>Inspectable source · MIT license · self-hosted control plane</span></div></div></PageHero>

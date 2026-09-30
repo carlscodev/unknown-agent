@@ -140,7 +140,46 @@ ua vision status|capabilities|analyze
 ua skills list|show|scaffold|audit       ua plugins …
 ua inspect · ua verify · ua doctor [--network|--install-browsers]
 ua context · ua memory · ua runs · ua sessions
+ua scheduler create|list|inspect|pause|resume|trigger|runs|cancel|replay|webhook|worker
 ```
+
+### Persistent automation
+
+`automation/scheduler.py` is the durable trigger and delivery layer. It stores
+strict `JobSpec` definitions and execution records in project-local SQLite/WAL,
+materializes deterministic occurrence keys, and uses transactional claims with
+owner leases and heartbeats. Expired leases recover after process death. Each
+job bounds concurrency, attempts, exponential backoff, timeout, input and output;
+terminal failures remain queryable as dead letters and replay creates a new
+audited occurrence.
+
+The scheduler depends on an async action registry rather than knowing how work is
+performed. `automation/actions.py` registers the production `agent.run` bridge,
+which invokes `core.runner.run_task` with a strict Pydantic payload and scheduler
+identity in run metadata. This preserves one policy, provider, tool, mission,
+verification and persistence architecture. Webhook definitions persist only a
+secret reference and verify constant-time HMAC-SHA256 before durable enqueue.
+See [`scheduler.md`](scheduler.md) for the delivery and operational contract.
+
+### Native subprocess containment
+
+`sandbox/profiles.py` converts strict profile requests into platform-native launch
+plans. Linux uses Bubblewrap namespaces and mount bindings, macOS uses Seatbelt,
+and Windows uses a restricted-token broker. Shell tools and validation gates pass
+through this layer before `host/process.py` starts a process. Required mode fails
+closed; auto mode records an explicit degradation. Canonical path checks keep the
+working directory and writable mounts inside the project. The process boundary
+also enforces the platform-wide 300-second timeout ceiling.
+
+### Stable RPC and ACP
+
+`rpc/jsonrpc.py` provides strict, bounded JSON-RPC 2.0 dispatch and concurrent
+NDJSON stdio transport. `rpc/acp.py` implements ACP v1 initialization, durable
+session create/load, prompt turns, streaming updates, mode changes, cancellation,
+and status. ACP prompts invoke `core.runner.run_task`; they do not bypass policy,
+sandboxing, hooks, tools, providers, mission journals, or verification. The CLI
+entry point is `ua acp`. See [`rpc-acp.md`](rpc-acp.md).
+
 
 Doctor check groups: environment, config, toolchain, project, browser, provider, **mcp** (SDK presence, per-server launcher/URL sanity, pointer to `ua mcp test` for live probes), **vision** (routing verdict with the fixing knob, Pillow presence), credentials (`--network`).
 

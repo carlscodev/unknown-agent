@@ -238,6 +238,7 @@ def _register_commands() -> None:
     """
 
     from unknown_agent.cli.commands import (
+        acp,
         agent,
         browser,
         config_cmd,
@@ -251,6 +252,8 @@ def _register_commands() -> None:
         plugins,
         providers_cmd,
         runs,
+        sandbox,
+        scheduler,
         service,
         sessions,
         skills,
@@ -286,6 +289,7 @@ def _register_commands() -> None:
         rich_help_panel="Agent",
     )
     app.command("shell", rich_help_panel="Agent")(_shell_command)
+    app.command("acp", rich_help_panel="Agent")(acp.acp_command)
 
     # -- project -----------------------------------------------------------
     app.command("init", rich_help_panel="Project")(misc.init_command)
@@ -301,6 +305,8 @@ def _register_commands() -> None:
     app.command("upgrade", rich_help_panel="Project")(misc.upgrade_command)
     app.command("log", rich_help_panel="Project")(misc.log_command)
     app.add_typer(service.app, name="service", help="Optional background maintenance: systemd user units, manual runs.", rich_help_panel="Project")
+    app.add_typer(scheduler.app, name="scheduler", help="Persistent cron and webhook automation.", rich_help_panel="Project")
+    app.add_typer(sandbox.app, name="sandbox", help="Native subprocess containment profiles.", rich_help_panel="Project")
     app.command("completion", rich_help_panel="Project")(misc.completion_command)
     app.add_typer(inspect.app, name="inspect", help="Repository intelligence: stack, commands, layout, risks.", rich_help_panel="Project")
 

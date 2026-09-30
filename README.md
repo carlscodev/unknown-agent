@@ -307,6 +307,18 @@ from logs, events and run journals by a process-wide redactor.
 * **Durable hooks**: signed plugins can subscribe to filtered runtime events with
   priority, timeout, retry, circuit breaking, cancellation and replay. Events are
   secret-redacted before SQLite WAL persistence. See [`docs/hooks.md`](docs/hooks.md).
+* **Persistent automation**: timezone-aware cron, intervals, one-shots, manual
+  idempotency keys and HMAC-signed webhooks feed the existing agent runner through
+  atomic leases, heartbeats, restart recovery, concurrency limits, exponential
+  retries, cancellation, dead letters and audited replay. See
+  [`docs/scheduler.md`](docs/scheduler.md).
+* **Native sandbox profiles**: Linux Bubblewrap, macOS Seatbelt and a Windows
+  restricted-token broker contain shell tools and validation with explicit
+  `auto`/`required` fail behavior. Every runtime timeout is capped at five minutes.
+  See [`docs/sandbox.md`](docs/sandbox.md).
+* **Stable ACP/RPC**: `ua acp` serves ACP v1 as bounded JSON-RPC 2.0 over stdio,
+  with durable sessions, streaming updates, mode changes and cancellation mapped
+  directly onto the canonical runner. See [`docs/rpc-acp.md`](docs/rpc-acp.md).
 
 ## Documentation
 
@@ -325,6 +337,9 @@ from logs, events and run journals by a process-wide redactor.
 | `docs/packaging.md` | pipx/uv/pip/standalone, Windows notes, CI matrices |
 | `docs/plugins.md` | Signed capability manifests, publisher trust and plugin lifecycle |
 | `docs/hooks.md` | Durable event hooks, retries, circuit breakers, cancellation and replay |
+| `docs/scheduler.md` | Persistent cron, interval, one-shot and signed-webhook automation |
+| `docs/sandbox.md` | Native containment profiles, fail-closed mode and timeout ceiling |
+| `docs/rpc-acp.md` | Stable JSON-RPC 2.0 and ACP v1 editor integration |
 | `docs/roadmap.md` | v1 scope, phase two (TUI, dashboard, teams, cloud) |
 | `docs/development.md` | Local setup, tests, quality gates, release checklist |
 

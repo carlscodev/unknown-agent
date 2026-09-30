@@ -23,12 +23,24 @@ from typing import Any
 from unknown_agent.core.models import RiskLevel, ToolResult
 from unknown_agent.host.process import run_process, split_command
 from unknown_agent.host.shell import plan_command
+from unknown_agent.sandbox import SandboxRequest
 from unknown_agent.tools.base import ParameterSpec, Tool, ToolContext
 
 TEST_HINTS = ("test",)
 BUILD_HINTS = ("build",)
 LINT_HINTS = ("lint",)
 TYPECHECK_HINTS = ("typecheck", "type-check", "tsc", "mypy")
+
+
+def _sandbox(ctx: ToolContext, cwd: Path) -> SandboxRequest:
+    config = ctx.settings.sandbox
+    return SandboxRequest(
+        mode=config.mode,
+        profile=config.shell_profile,
+        workspace=ctx.project_root,
+        cwd=cwd,
+        allow_network=config.allow_network and ctx.settings.policy.allow_network,
+    )
 
 
 def project_command(ctx: ToolContext, *names: str) -> str | None:
@@ -56,11 +68,11 @@ class ShellRunTool(Tool):
     category = "execution"
     risk = RiskLevel.EXECUTE
     tags = ("run", "primary")
-    timeout_s = 900.0
+    timeout_s = 300.0
     parameters = (
         ParameterSpec("command", "string", "Command line to execute.", required=True, examples=("npm run lint",)),
         ParameterSpec("cwd", "string", "Working directory relative to the project root.", default="."),
-        ParameterSpec("timeout_s", "number", "Kill the command after this many seconds.", default=300, minimum=1, maximum=3600),
+        ParameterSpec("timeout_s", "number", "Kill the command after this many seconds.", default=300, minimum=1, maximum=300),
         ParameterSpec("env", "object", "Extra environment variables.", default=None),
         ParameterSpec("allow_shell", "boolean", "Allow shell operators (|, &&, >) via /bin/sh. Default: false.", default=False),
     )
@@ -77,7 +89,7 @@ class ShellRunTool(Tool):
                 "or split it into separate commands.",
                 output=f"command: {command}",
             )
-        result = await run_process(plan.argv, cwd=workdir, timeout=timeout_s, env=env, label=command)
+        result = await run_process(plan.argv, cwd=workdir, timeout=timeout_s, env=env, label=command, sandbox=_sandbox(ctx, workdir))
         ctx.emit("observation", f"$ {command} -> exit {result.exit_code} ({result.duration_s:.1f}s)", exit_code=result.exit_code)
         summary = _summarise_process(command, result)
         artifact = None
@@ -100,13 +112,13 @@ class _ProjectCommandTool(Tool):
 
     risk = RiskLevel.EXECUTE
     category = "execution"
-    timeout_s = 1800.0
+    timeout_s = 300.0
     command_names: tuple[str, ...] = ()
     fallback_commands: tuple[str, ...] = ()
     parameters = (
         ParameterSpec("target", "string", "Optional file/directory/pattern argument passed to the command.", default=""),
         ParameterSpec("cwd", "string", "Working directory relative to the project root.", default="."),
-        ParameterSpec("timeout_s", "number", "Kill after this many seconds.", default=600, minimum=1, maximum=3600),
+        ParameterSpec("timeout_s", "number", "Kill after this many seconds.", default=300, minimum=1, maximum=300),
         ParameterSpec("command", "string", "Override the detected command.", default=""),
     )
 
@@ -124,7 +136,7 @@ class _ProjectCommandTool(Tool):
             return None
         return f"{base} {target}".strip() if target else base
 
-    async def run(self, ctx: ToolContext, target: str = "", cwd: str = ".", timeout_s: float = 600, command: str = "") -> ToolResult:
+    async def run(self, ctx: ToolContext, target: str = "", cwd: str = ".", timeout_s: float = 300, command: str = "") -> ToolResult:
         resolved = self.resolve_command(ctx, command, target)
         if resolved is None:
             return ToolResult.failure(
@@ -133,7 +145,7 @@ class _ProjectCommandTool(Tool):
             )
         workdir = (ctx.project_root / cwd).resolve()
         plan = plan_command(resolved, allow_shell=True)
-        result = await run_process(plan.argv, cwd=workdir, timeout=timeout_s, label=resolved)
+        result = await run_process(plan.argv, cwd=workdir, timeout=timeout_s, label=resolved, sandbox=_sandbox(ctx, workdir))
         ctx.emit("observation", f"{self.name}: {resolved} -> exit {result.exit_code}", exit_code=result.exit_code, duration_s=round(result.duration_s, 2))
         artifacts: list[str] = []
         if len(result.combined()) > 20_000:

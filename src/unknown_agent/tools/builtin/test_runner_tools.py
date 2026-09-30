@@ -713,7 +713,7 @@ class TestRunBackgroundTool(Tool):
         target: str = "",
         framework: str = "",
         extra_args: str = "",
-        timeout_s: float = 1800.0,
+        timeout_s: float = 300.0,
         wait: bool = False,
     ) -> ToolResult:
         root = _resolve_root(ctx)
@@ -784,7 +784,7 @@ class TestStatusTool(Tool):
         ctx: ToolContext,
         job_id: str = "",
         wait: bool = False,
-        wait_timeout_s: float = 600.0,
+        wait_timeout_s: float = 300.0,
         tail_lines: int = 0,
     ) -> ToolResult:
         registry = TestSessionRegistry.for_context(ctx)

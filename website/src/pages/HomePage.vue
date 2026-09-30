@@ -6,7 +6,7 @@ import { capabilities, terminalLines, phases, github } from "../content.js";
 <template>
   <div>
     <section class="hero"><div class="hero-grid" aria-hidden="true"></div><div class="container hero-inner">
-      <div class="hero-copy"><a class="release-pill" :href="`${github}/commits/main`" target="_blank"><span>NEW</span> Durable extension hooks are live <UiIcon name="arrow" :size="14" /></a>
+      <div class="hero-copy"><a class="release-pill" :href="`${github}/commits/main`" target="_blank"><span>NEW</span> Extensible runtime phase complete · ACP + native sandboxes <UiIcon name="arrow" :size="14" /></a>
         <h1>Build beyond<br><em>the prompt.</em></h1><p class="hero-lead">A sovereign AI engineering runtime that plans deeply, acts through real tools, and keeps working until the proof is green.</p>
         <div class="hero-actions"><RouterLink class="button primary large" to="/download">Get Unknown Agent <UiIcon name="arrow" :size="18" /></RouterLink><RouterLink class="button ghost large" to="/product">Explore the runtime</RouterLink></div>
         <div class="hero-note"><span>No cloud lock-in</span><span>MIT licensed</span><span>Runs where your code lives</span></div>

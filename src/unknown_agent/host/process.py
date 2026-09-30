@@ -24,8 +24,10 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from unknown_agent.errors import ToolTimeout
+from unknown_agent.sandbox import SandboxDecision, SandboxRequest, build_sandbox_command
 
 MAX_BUFFER_BYTES = 400_000
+MAX_PROCESS_TIMEOUT_SECONDS = 300.0
 
 
 @dataclass(slots=True)
@@ -40,6 +42,10 @@ class ProcessResult:
     timed_out: bool = False
     truncated: bool = False
     env_keys: list[str] = field(default_factory=list)
+    sandbox_backend: str | None = None
+    sandbox_profile: str = "trusted"
+    sandbox_enforced: bool = False
+    sandbox_detail: str = ""
 
     @property
     def ok(self) -> bool:
@@ -65,6 +71,12 @@ class ProcessResult:
             "truncated": self.truncated,
             "stdout": self.stdout,
             "stderr": self.stderr,
+            "sandbox": {
+                "backend": self.sandbox_backend,
+                "profile": self.sandbox_profile,
+                "enforced": self.sandbox_enforced,
+                "detail": self.sandbox_detail,
+            },
         }
 
 
@@ -85,7 +97,9 @@ def _kill_tree(proc: asyncio.subprocess.Process) -> None:  # pragma: no cover - 
         return
     try:
         if os.name == "nt":
-            subprocess.run(["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False)
+            subprocess.run(
+                ["taskkill", "/F", "/T", "/PID", str(proc.pid)], capture_output=True, check=False
+            )
         else:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
     except (ProcessLookupError, PermissionError):
@@ -96,8 +110,9 @@ async def run_process(
     argv: Sequence[str],
     *,
     cwd: Path | str | None = None,
-    timeout: float = 600.0,
+    timeout: float = 300.0,
     env: Mapping[str, str] | None = None,
+    sandbox: SandboxRequest | None = None,
     inherit_env: bool = True,
     stdin_data: str | None = None,
     max_buffer_bytes: int = MAX_BUFFER_BYTES,
@@ -108,6 +123,10 @@ async def run_process(
     argv_list = [str(part) for part in argv]
     if not argv_list:
         raise ValueError("run_process requires at least one argument")
+    if timeout <= 0:
+        raise ValueError("process timeout must be greater than zero")
+    timeout = min(float(timeout), MAX_PROCESS_TIMEOUT_SECONDS)
+    original_argv = list(argv_list)
     resolved = shutil.which(argv_list[0])
     executable = resolved or argv_list[0]
     if resolved is None and not Path(argv_list[0]).is_absolute():
@@ -120,6 +139,19 @@ async def run_process(
             stderr=f"Executable not found on PATH: {argv_list[0]}",
             duration_s=0.0,
         )
+
+    decision = SandboxDecision(
+        argv=argv_list,
+        backend=None,
+        profile="trusted",
+        enforced=False,
+        network_allowed=True,
+        detail="no sandbox requested",
+    )
+    if sandbox is not None:
+        decision = build_sandbox_command(argv_list, sandbox)
+        argv_list = decision.argv
+        executable = argv_list[0]
 
     child_env: dict[str, str] | None
     if env is None and inherit_env:
@@ -149,10 +181,11 @@ async def run_process(
 
     stdout_chunks: list[bytes] = []
     stderr_chunks: list[bytes] = []
-    stdout_len = stderr_len = 0
     truncated = False
 
-    async def pump(stream: asyncio.StreamReader | None, sink: list[bytes], counter: list[int]) -> None:
+    async def pump(
+        stream: asyncio.StreamReader | None, sink: list[bytes], counter: list[int]
+    ) -> None:
         nonlocal truncated
         if stream is None:
             return
@@ -197,8 +230,8 @@ async def run_process(
 
     duration = time.monotonic() - started
     return ProcessResult(
-        command=label or " ".join(argv_list),
-        argv=argv_list,
+        command=label or " ".join(original_argv),
+        argv=original_argv,
         cwd=str(cwd or Path.cwd()),
         exit_code=proc.returncode if proc.returncode is not None else -1,
         stdout=b"".join(stdout_chunks).decode("utf-8", errors="replace"),
@@ -210,10 +243,16 @@ async def run_process(
         timed_out=timed_out,
         truncated=truncated,
         env_keys=sorted(env.keys()) if env else [],
+        sandbox_backend=decision.backend,
+        sandbox_profile=decision.profile,
+        sandbox_enforced=decision.enforced,
+        sandbox_detail=decision.detail,
     )
 
 
-async def run_process_or_raise(argv: Sequence[str], *, timeout: float = 600.0, **kwargs: object) -> ProcessResult:
+async def run_process_or_raise(
+    argv: Sequence[str], *, timeout: float = 300.0, **kwargs: object
+) -> ProcessResult:
     result = await run_process(argv, timeout=timeout, **kwargs)  # type: ignore[arg-type]
     if result.timed_out:
         raise ToolTimeout(f"Command timed out after {timeout:.0f}s: {result.command}")

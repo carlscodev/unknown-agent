@@ -1,7 +1,10 @@
 <script setup>
 import PageHero from "../components/PageHero.vue";
 const changes=[
- {date:'Current',version:'main',title:'Durable session branches',items:['Event-sourced forks at any visible event','SHA-256 integrity chains and deterministic replay','Semantic merge previews with provenance','Seven new agent-native session tools']},
+ {date:'Current',version:'phase 2 complete',title:'Native sandboxes & stable ACP',items:['Bubblewrap, Seatbelt and Windows restricted-token profiles','Required fail-closed mode with project-bounded writable mounts','ACP v1 over bounded JSON-RPC 2.0 stdio','Durable sessions, streamed updates, modes and cancellation','Runtime-wide five-minute timeout ceiling']},
+ {date:'Phase 2.3',version:'persistent automation',title:'Persistent automation scheduler',items:['Timezone-aware cron, intervals and one-shot missions','HMAC-signed webhooks with secret references and idempotency','Atomic leases, heartbeats, restart recovery and concurrency limits','Cancellation, exponential retry, dead letters and audited replay']},
+ {date:'Phase 2.2',version:'extensible runtime',title:'Durable extension hooks',items:['SQLite/WAL event delivery with priority and filters','Retries, timeout, cancellation and circuit breakers','Secret redaction, integrity hashes and restart recovery','Atomic registration from signed plugin manifests']},
+ {date:'Phase 1',version:'coding core',title:'Durable session branches',items:['Event-sourced forks at any visible event','SHA-256 integrity chains and deterministic replay','Semantic merge previews with provenance','Seven new agent-native session tools']},
  {date:'Phase 1',version:'coding core',title:'LSP intelligence & worktrees',items:['Persistent language server supervision','Eight code intelligence tools','Mission-owned isolated worktrees','Cleanup, stale-lease recovery and ownership checks']},
  {date:'Foundation',version:'sovereign runtime',title:'Long-horizon execution',items:['Durable mission engine and typed reasoning','Frontier model routing with dynamic budgets','Failure classification and stall freezing','Mission API, SSE and web console integration']},
 ];

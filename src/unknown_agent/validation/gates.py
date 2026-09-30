@@ -25,6 +25,7 @@ from unknown_agent.core.models import GateResult, GateStatus
 from unknown_agent.host.process import ProcessResult, run_process
 from unknown_agent.host.shell import normalize_package_manager_command
 from unknown_agent.observability.logging import get_logger
+from unknown_agent.sandbox import SandboxRequest
 
 log = get_logger("validation.gates")
 
@@ -58,6 +59,17 @@ class GateContext:
         from unknown_agent.observability.events import Event
 
         self.events.emit(Event(type=event_type, run_id=self.run_id, message=message, data=data))  # type: ignore[arg-type]
+
+
+def _sandbox(ctx: GateContext) -> SandboxRequest:
+    config = ctx.settings.sandbox
+    return SandboxRequest(
+        mode=config.mode,
+        profile=config.validation_profile,
+        workspace=ctx.project_root,
+        cwd=ctx.project_root,
+        allow_network=config.allow_network and ctx.settings.policy.allow_network,
+    )
 
 
 class Gate:
@@ -183,7 +195,7 @@ class CommandGate(Gate):
         commands: tuple[str, ...],
         fallbacks: tuple[dict[str, Any], ...] = (),
         hint: str | None = None,
-        timeout_s: float = 900.0,
+        timeout_s: float = 300.0,
     ) -> None:
         self.name = name
         self.description = description
@@ -230,7 +242,7 @@ class CommandGate(Gate):
         command = self.resolve_command(ctx)
         if not command:
             return GateResult(name=self.name, status=GateStatus.SKIPPED, summary=f"no {self.name} command detected")
-        result = await run_process(["/bin/sh", "-c", command] if _posix() else ["cmd", "/c", command], cwd=ctx.project_root, timeout=self.timeout_s, label=command)
+        result = await run_process(["/bin/sh", "-c", command] if _posix() else ["cmd", "/c", command], cwd=ctx.project_root, timeout=self.timeout_s, label=command, sandbox=_sandbox(ctx))
         gate = _from_process(self.name, command, result, hint=self.hint)
         gate.fix_hint = gate.fix_hint or _failure_hint(self.name, gate.output)
         return gate
@@ -346,7 +358,7 @@ class BrowserGate(Gate):
 class CustomGate(Gate):
     """User-declared gate: ``[validation.custom_gate_commands]``."""
 
-    def __init__(self, name: str, command: str, *, timeout_s: float = 600.0, hint: str | None = None) -> None:
+    def __init__(self, name: str, command: str, *, timeout_s: float = 300.0, hint: str | None = None) -> None:
         self.name = name
         self.command_text = command
         self.timeout_s = timeout_s
@@ -359,7 +371,7 @@ class CustomGate(Gate):
         command = self.command_text
         if ctx.project is not None:
             command = command.replace("{root}", str(ctx.project_root)).replace("{python}", "python3")
-        result = await run_process(["/bin/sh", "-c", command] if _posix() else ["cmd", "/c", command], cwd=ctx.project_root, timeout=self.timeout_s, label=command)
+        result = await run_process(["/bin/sh", "-c", command] if _posix() else ["cmd", "/c", command], cwd=ctx.project_root, timeout=self.timeout_s, label=command, sandbox=_sandbox(ctx))
         return _from_process(self.name, command, result, hint=self.hint)
 
 

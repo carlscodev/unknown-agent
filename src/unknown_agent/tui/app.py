@@ -542,7 +542,7 @@ class AgentShell(App[None]):
         self._approval_decision = True
         self.call_from_thread(self._show_plan_approval, plan)
         # The loop is on another thread; wait for the UI to answer.
-        self._approval.wait(timeout=600)
+        self._approval.wait(timeout=300)
         return self._approval_decision
 
     def _show_plan_approval(self, plan: Any) -> None:

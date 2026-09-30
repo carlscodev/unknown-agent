@@ -86,7 +86,7 @@ async def install_browsers(browser: str = "chromium", *, with_deps: bool = False
     argv = ["python3", "-m", "playwright", "install", browser]
     if with_deps and _has_root():
         argv.append("--with-deps")
-    result = await run_process(argv, timeout=1800)
+    result = await run_process(argv, timeout=300)
     return result.ok, (result.combined() or "")[-4000:]
 
 

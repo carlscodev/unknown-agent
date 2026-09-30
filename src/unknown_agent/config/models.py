@@ -243,7 +243,7 @@ class GateSetting(_Base):
         ),
     )
     command: str | None = None
-    timeout_s: float = Field(600.0, gt=0)
+    timeout_s: float = Field(300.0, gt=0, le=300.0)
     fail_fast: bool = False
 
 
@@ -375,16 +375,26 @@ class UiConfig(_Base):
     theme: str = "default"
 
 
+class SandboxConfig(_Base):
+    """Native subprocess containment; required mode fails closed."""
+
+    mode: Literal["off", "auto", "required"] = "auto"
+    default_profile: Literal["trusted", "workspace", "isolated"] = "workspace"
+    allow_network: bool = False
+    shell_profile: Literal["trusted", "workspace", "isolated"] = "workspace"
+    validation_profile: Literal["trusted", "workspace", "isolated"] = "workspace"
+
+
 class ToolsConfig(_Base):
     """Per-tool tuning that is user-visible and supported."""
 
     timeouts: dict[str, float] = Field(
         default_factory=lambda: {
-            "shell_run": 900.0,
-            "test_run": 1800.0,
-            "build_run": 1800.0,
-            "lint_run": 600.0,
-            "typecheck_run": 600.0,
+            "shell_run": 300.0,
+            "test_run": 300.0,
+            "build_run": 300.0,
+            "lint_run": 300.0,
+            "typecheck_run": 300.0,
             "browser_flow": 180.0,
             "http_fetch": 60.0,
             "git_diff": 60.0,
@@ -395,6 +405,13 @@ class ToolsConfig(_Base):
     truncate_tail_lines: int = Field(160, ge=1)
     search_max_results: int = Field(200, ge=1)
     read_max_bytes: int = Field(600_000, ge=1000)
+
+    @field_validator("timeouts")
+    @classmethod
+    def cap_tool_timeouts(cls, value: dict[str, float]) -> dict[str, float]:
+        if any(timeout <= 0 or timeout > 300 for timeout in value.values()):
+            raise ValueError("tool timeouts must be greater than 0 and at most 300 seconds")
+        return value
 
 
 class ProjectConfig(_Base):
@@ -836,6 +853,7 @@ class Settings(_Base):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     telemetry: TelemetryConfig = Field(default_factory=TelemetryConfig)
     plugins: PluginsConfig = Field(default_factory=PluginsConfig)
+    sandbox: SandboxConfig = Field(default_factory=SandboxConfig)
     tools: ToolsConfig = Field(default_factory=ToolsConfig)
     ui: UiConfig = Field(default_factory=UiConfig)
     project: ProjectConfig = Field(default_factory=ProjectConfig)
