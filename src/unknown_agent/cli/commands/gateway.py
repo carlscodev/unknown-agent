@@ -9,6 +9,7 @@ import typer
 from unknown_agent.cli.runtime import Runtime
 from unknown_agent.errors import UsageError
 from unknown_agent.gateway import (
+    AccessController,
     ChannelAddress,
     ContentKind,
     ContentPart,
@@ -27,9 +28,53 @@ def _runtime(ctx: typer.Context) -> Runtime:
     return runtime
 
 
+def _access(ctx: typer.Context) -> AccessController:
+    loaded = _runtime(ctx).load()
+    return AccessController(loaded.paths.project_dir / "gateway.db")
+
+
 def _gateway(ctx: typer.Context) -> Gateway:
     loaded = _runtime(ctx).load()
-    return Gateway(loaded.paths.project_dir / "gateway.db")
+    return Gateway(loaded.paths.project_dir / "gateway.db", access=_access(ctx))
+
+
+@app.command("pair-issue")
+def pair_issue(
+    ctx: typer.Context,
+    channel: str = typer.Option(..., "--channel"),
+    account: str = typer.Option(..., "--account"),
+    role: str = typer.Option("operator", "--role"),
+    ttl: int = typer.Option(300, "--ttl", min=1, max=300),
+) -> None:
+    """Issue a one-time six-digit pairing code."""
+    pairing = _access(ctx).issue(channel, account, role=role, ttl_seconds=ttl)  # type: ignore[arg-type]
+    _runtime(ctx).emit_json(pairing.model_dump(mode="json"))
+
+
+@app.command("pair-claim")
+def pair_claim(
+    ctx: typer.Context,
+    channel: str = typer.Option(..., "--channel"),
+    account: str = typer.Option(..., "--account"),
+    sender: str = typer.Option(..., "--sender"),
+    code: str = typer.Option(..., "--code"),
+) -> None:
+    """Bind a channel sender to a one-time pairing code."""
+    identity = _access(ctx).claim(channel, account, sender, code)
+    _runtime(ctx).emit_json(identity.model_dump(mode="json"))
+
+
+@app.command("identities")
+def identities(ctx: typer.Context) -> None:
+    """List paired channel identities."""
+    values = _access(ctx).list()
+    _runtime(ctx).emit_json({"identities": [item.model_dump(mode="json") for item in values]})
+
+
+@app.command("revoke")
+def revoke(ctx: typer.Context, identity_id: str) -> None:
+    """Disable a paired identity immediately."""
+    _runtime(ctx).emit_json({"revoked": _access(ctx).revoke(identity_id), "id": identity_id})
 
 
 @app.command("receive")

@@ -30,7 +30,7 @@ ua gateway drain
 ua gateway worker --poll 1
 ```
 
-All output is JSON-safe for pipes and service supervisors. Real channel adapters register a transport and call `Gateway.receive`; they never write directly to agent internals. ACLs, device pairing, and concrete messaging adapters are subsequent Phase 3 layers built on this boundary.
+All output is JSON-safe for pipes and service supervisors. Real channel adapters register a transport and call `Gateway.receive`; they never write directly to agent internals. The integrated ACL layer binds `(channel, account, sender)` identities through one-time six-digit pairing codes. Codes are salted, hashed, single-use, expire within five minutes, and lock after five failed attempts. Roles (`viewer`, `operator`, `owner`) grant explicit permissions; revocation is immediate. Use `ua gateway pair-issue`, `pair-claim`, `identities`, and `revoke`. Concrete messaging adapters are the next Phase 3 layer.
 
 ## Security
 

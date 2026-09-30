@@ -49,9 +49,10 @@ def _safe_json(value: Any) -> str:
 class Gateway:
     """SQLite/WAL gateway with deduplication, leases, retries, and an outbox."""
 
-    def __init__(self, path: Path, *, owner: str | None = None) -> None:
+    def __init__(self, path: Path, *, owner: str | None = None, access: Any = None) -> None:
         self.path = path
         self.owner = owner or f"gateway-{uuid.uuid4()}"
+        self.access = access
         self.routes: dict[str, RouteHandler] = {}
         self.transports: dict[str, Transport] = {}
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -139,6 +140,13 @@ class Gateway:
             )
 
     def receive(self, envelope: InboundEnvelope) -> str:
+        if self.access is not None:
+            self.access.authorize(
+                envelope.source.channel,
+                envelope.source.account,
+                envelope.sender_id,
+                "agent.run",
+            )
         encoded = _safe_json(envelope.model_dump(mode="json"))
         digest = hashlib.sha256(encoded.encode()).hexdigest()
         identifier = str(uuid.uuid4())

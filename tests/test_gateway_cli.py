@@ -17,6 +17,21 @@ def invoke(project: Path, *args: str) -> dict[str, object]:
 
 
 def test_gateway_cli_receive_and_list_are_machine_safe(tmp_path: Path) -> None:
+    pairing = invoke(tmp_path, "gateway", "pair-issue", "--channel", "test", "--account", "bot")
+    identity = invoke(
+        tmp_path,
+        "gateway",
+        "pair-claim",
+        "--channel",
+        "test",
+        "--account",
+        "bot",
+        "--sender",
+        "user",
+        "--code",
+        str(pairing["code"]),
+    )
+    assert identity["role"] == "operator"
     accepted = invoke(
         tmp_path,
         "gateway",
