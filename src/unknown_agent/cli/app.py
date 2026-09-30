@@ -252,6 +252,7 @@ def _register_commands() -> None:
         orchestration,
         plugins,
         providers_cmd,
+        release_cmd,
         runs,
         sandbox,
         scheduler,
@@ -309,6 +310,7 @@ def _register_commands() -> None:
     app.add_typer(scheduler.app, name="scheduler", help="Persistent cron and webhook automation.", rich_help_panel="Project")
     app.add_typer(sandbox.app, name="sandbox", help="Native subprocess containment profiles.", rich_help_panel="Project")
     app.add_typer(gateway.app, name="gateway", help="Durable channel-neutral inbox and outbox.", rich_help_panel="Project")
+    app.add_typer(release_cmd.app, name="release", help="SBOM and signed provenance artifacts.", rich_help_panel="Project")
     app.command("completion", rich_help_panel="Project")(misc.completion_command)
     app.add_typer(inspect.app, name="inspect", help="Repository intelligence: stack, commands, layout, risks.", rich_help_panel="Project")
 

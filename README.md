@@ -344,7 +344,8 @@ from logs, events and run journals by a process-wide redactor.
 | `docs/scheduler.md` | Persistent cron, interval, one-shot and signed-webhook automation |
 | `docs/sandbox.md` | Native containment profiles, fail-closed mode and timeout ceiling |
 | `docs/rpc-acp.md` | Stable JSON-RPC 2.0 and ACP v1 editor integration |
-| `docs/gateway.md` | Durable channel-neutral inbox, outbox and adapter contract |
+| `docs/gateway.md` | Omnichannel gateway, media, voice and device delegation |
+| `docs/supply-chain.md` | Transactional migrations, SPDX SBOM and signed SLSA provenance |
 | `docs/roadmap.md` | v1 scope, phase two (TUI, dashboard, teams, cloud) |
 | `docs/development.md` | Local setup, tests, quality gates, release checklist |
 

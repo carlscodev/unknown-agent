@@ -1,7 +1,8 @@
 <script setup>
 import PageHero from "../components/PageHero.vue";
 const changes=[
- {date:'Current',version:'phase 3.6',title:'Cryptographic device delegation',items:['Ed25519 proof-of-possession enrollment','Signed requests with durable nonce replay protection','Capability-scoped durable command queues and bounded leases','Immediate device revocation and command cancellation']},
+ {date:'Current',version:'phase 4.1',title:'Migrations and release supply chain',items:['Checksum-locked transactional SQLite migrations','Integrity-checked atomic database restore','Deterministic SPDX 2.3 software bills of materials','Ed25519 DSSE and SLSA provenance attestations']},
+ {date:'Phase 3.6',version:'device delegation',title:'Cryptographic device delegation',items:['Ed25519 proof-of-possession enrollment','Signed requests with durable nonce replay protection','Capability-scoped durable command queues and bounded leases','Immediate device revocation and command cancellation']},
  {date:'Phase 3.5',version:'media and voice',title:'Durable media and voice pipeline',items:['Bounded streaming ingestion into a content-addressed store','SHA-256, size and MIME integrity enforcement','Pluggable platform media resolvers and portable CAS references','Cached OpenAI-compatible speech transcription']},
  {date:'Phase 3.4',version:'channel adapters',title:'WhatsApp and Matrix adapters',items:['Meta webhook signature and challenge verification','Batched WhatsApp text and media normalization','Authenticated Matrix incremental sync with durable cursors','Matrix replies, threads and transaction-scoped delivery']},
  {date:'Phase 3.3',version:'channel adapters',title:'Telegram, Discord and Slack adapters',items:['Telegram webhook verification and Bot API transport','Slack HMAC verification with replay-window enforcement','Discord Ed25519 interaction verification and REST transport','Secret-reference-only credentials and neutral media envelopes']},
