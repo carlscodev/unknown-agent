@@ -20,6 +20,12 @@ from unknown_agent.gateway.contracts import (
     OutboundDraft,
     OutboundEnvelope,
 )
+from unknown_agent.gateway.mobile_adapters import (
+    MatrixAdapter,
+    MatrixConfig,
+    WhatsAppAdapter,
+    WhatsAppConfig,
+)
 from unknown_agent.gateway.service import Gateway
 
 __all__ = [
@@ -35,6 +41,8 @@ __all__ = [
     "GatewayRecord",
     "Identity",
     "InboundEnvelope",
+    "MatrixAdapter",
+    "MatrixConfig",
     "OutboundDraft",
     "OutboundEnvelope",
     "PairingCode",
@@ -42,5 +50,7 @@ __all__ = [
     "SlackConfig",
     "TelegramAdapter",
     "TelegramConfig",
+    "WhatsAppAdapter",
+    "WhatsAppConfig",
     "register_agent_route",
 ]

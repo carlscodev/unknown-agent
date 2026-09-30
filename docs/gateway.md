@@ -38,6 +38,8 @@ Production adapters now normalize Telegram Bot API updates, Slack Events API mes
 
 Adapter tokens and signing secrets must be `env:`, `file:`, `store:`, or `keyring:` references—raw secrets fail validation. Telegram media is represented as typed `telegram-file:` references for the media pipeline rather than embedding bytes. Instantiate `TelegramAdapter`, `SlackAdapter`, or `DiscordAdapter`, call `normalize`, pass the resulting envelope to `Gateway.receive`, and register each adapter's async `send` method as the channel transport.
 
+WhatsApp Cloud API support verifies Meta's SHA-256 webhook signature, implements constant-time subscription challenge verification, normalizes batched text/media notifications, and sends through the versioned Graph API. Matrix support consumes authenticated incremental `/sync` batches, preserves `next_batch` cursors for restart-safe polling, ignores the agent's own events, maps replies and threads, and sends idempotent transaction-scoped room events. Matrix long-poll and HTTP timeouts are bounded at five minutes.
+
 ## Security
 
 - Process-wide secret redaction occurs before envelope persistence.
