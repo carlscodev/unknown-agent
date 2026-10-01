@@ -5,7 +5,7 @@ const detail=[
  ['Foundation shipped',['Typed reasoning protocol','Durable mission engine','AST and repository intelligence','Provider routing and prompt caching','Web control plane and event stream']],
  ['Coding core shipped',['Persistent LSP tools','Mission-linked Git worktrees','Event-sourced session forks','Tiered context compaction','Transactional mutation queues']],
  ['Extensible runtime — shipped',['Signed capability manifests','Hook and event bus','Persistent cron and signed-webhook scheduler','Native cross-platform sandbox profiles','Stable JSON-RPC / ACP v1 service']],
- ['Omnichannel & ecosystem',['Channel-neutral durable gateway — shipped','Five messaging adapters, media, voice and delegation — shipped','Migrations, supply-chain, benchmarks and marketplace — shipped','Desktop and mobile clients']],
+ ['Omnichannel & ecosystem',['Channel-neutral durable gateway — shipped','Five messaging adapters, media, voice and delegation — shipped','Migrations, supply-chain, benchmarks and marketplace — shipped','Encrypted desktop/mobile client runtime — shipped']],
 ];
 </script>
 <template><div><PageHero eyebrow="ROADMAP" title="From coding agent to sovereign agent platform." lead="A staged program keeps every layer useful, testable and production-ready before the next one compounds it." />

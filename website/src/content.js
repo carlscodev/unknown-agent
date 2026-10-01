@@ -14,7 +14,7 @@ export const phases = [
   { n: "01", status: "Complete", title: "Coding core", text: "Mission runtime, LSP intelligence, isolated worktrees, durable forks, tiered compaction and transactional mutations—all shipped." },
   { n: "02", status: "Complete", title: "Extensible runtime", text: "Signed capabilities, durable hooks, persistent automation, native sandbox profiles and stable ACP/JSON-RPC are shipped." },
   { n: "03", status: "Complete", title: "Omnichannel gateway", text: "Durable messaging, ACL pairing, five production channel adapters, content-addressed media, voice transcription and Ed25519 device delegation are live." },
-  { n: "04", status: "Building", title: "Product ecosystem", text: "Migrations, supply-chain security, benchmark gates and an Ed25519-verified extension marketplace are live; desktop and mobile clients follow." },
+  { n: "04", status: "Building", title: "Product ecosystem", text: "Release security, benchmarks, marketplace and the encrypted shared client runtime are live; native desktop/mobile presentation shells follow." },
 ];
 
 export const terminalLines = [
