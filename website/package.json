@@ -7,22 +7,13 @@
     "dev": "vite --host 0.0.0.0",
     "build": "vite build",
     "preview": "vite preview --host 0.0.0.0",
-    "check": "npm run i18n:check && npm run test && npm run build",
-    "i18n:check": "node scripts/check-locales.mjs",
-    "test": "vitest run",
-    "test:watch": "vitest"
+    "check": "vite build"
   },
   "dependencies": {
     "@vitejs/plugin-vue": "^5.2.1",
     "vite": "^5.4.11",
     "vue": "^3.5.13",
-    "vue-i18n": "11.4.12",
     "vue-router": "^4.5.0"
   },
-  "devDependencies": {
-    "@intlify/unplugin-vue-i18n": "6.0.8",
-    "@vue/test-utils": "2.5.1",
-    "jsdom": "30.1.1",
-    "vitest": "3.2.7"
-  }
+  "devDependencies": {}
 }

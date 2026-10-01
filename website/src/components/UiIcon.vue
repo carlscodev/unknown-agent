@@ -2,9 +2,7 @@
 defineProps({ name: { type: String, default: "arrow" }, size: { type: Number, default: 20 } });
 const paths = {
   arrow: '<path d="M5 12h14M13 6l6 6-6 6"/>',
-  chevron: '<path d="m6 9 6 6 6-6"/>',
-  chevronEnd: '<path d="m9 18 6-6-6-6"/>',
-  globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a15 15 0 0 1 0 18 15 15 0 0 1 0-18"/>',
+  chevron: '<path d="m9 18 6-6-6-6"/>',
   copy: '<rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   close: '<path d="m6 6 12 12M18 6 6 18"/>',

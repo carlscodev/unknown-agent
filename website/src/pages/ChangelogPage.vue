@@ -1,104 +1,27 @@
 <script setup>
-/**
- * Changelog with a partial-translation strategy.
- *
- * The changelog grows with every release, so requiring all 20 entries in all
- * nine languages before a release would make translation a release blocker.
- * Instead each locale ships the five newest entries (the ones a visitor is
- * most likely to care about) and older entries fall back to English with a
- * visible notice — never a silent swap.
- *
- * The canonical entry list and its order always come from the English source,
- * so a locale can neither reorder nor drop entries. Whether a given entry is
- * translated is decided by looking at the locale's OWN message object via
- * `getLocaleMessage`, not via `t()`: `t()` would transparently resolve the
- * fallback and report every entry as translated.
- */
-import { computed } from "vue";
-import { useI18n } from "vue-i18n";
 import PageHero from "../components/PageHero.vue";
-import { DEFAULT_LOCALE, getLocale } from "../i18n/locales.js";
-import { github } from "../content.js";
-
-const { t, locale, getLocaleMessage } = useI18n();
-
-/** Canonical ids in English source order — the single ordering authority. */
-const canonicalIds = computed(() =>
-  Object.keys(getLocaleMessage(DEFAULT_LOCALE)?.changelog?.entries ?? {}),
-);
-
-/** The native name of the active language, used in the fallback notice. */
-const languageName = computed(() => getLocale(locale.value)?.name ?? locale.value);
-
-const entries = computed(() => {
-  const own = getLocaleMessage(locale.value)?.changelog?.entries ?? {};
-  const english = getLocaleMessage(DEFAULT_LOCALE)?.changelog?.entries ?? {};
-  return canonicalIds.value.map((id) => {
-    const translated = Boolean(own[id]);
-    const source = translated ? own[id] : english[id];
-    return {
-      id,
-      translated,
-      date: source.date,
-      version: source.version,
-      title: source.title,
-      items: source.items ?? [],
-    };
-  });
-});
+const changes=[
+ {date:'Current',version:'platform hardening',title:'Warning-free validation baseline',items:['Deprecated pathspec matching migrated to GitIgnoreSpec','Maintained multipart and HTTP test-client integrations','Accurate secret-persistence regression assertion','937 passing tests with no warning output']},
+ {date:'Phase 4 complete',version:'native ecosystem',title:'Signed native product ecosystem',items:['Electron packages for Linux, macOS and Windows','Capacitor Android and iOS projects with store signing','Cross-platform CI builds and fail-closed release credentials','Native checksums, SPDX SBOM and signed SLSA provenance']},
+ {date:'Phase 4.6',version:'packaged client',title:'Packaged client distribution',items:['ua client serves the bundled production PWA and sync API','Direct TLS certificate support for remote and mobile access','End-to-end signed enrollment, sync and replay rejection tests','Prebuilt assets included in Python package releases']},
+ {date:'Phase 4.5',version:'installable client',title:'Installable desktop and mobile PWA',items:['Responsive offline inbox, messaging and approval UI','Non-exportable WebCrypto identity and encrypted IndexedDB state','Signed device enrollment and durable sync API endpoints','Install manifest and service-worker offline shell']},
+ {date:'Phase 4.4',version:'client runtime',title:'Secure desktop and mobile client runtime',items:['ChaCha20-Poly1305 encrypted offline state','Idempotent operation queue and atomic cursor synchronization','Ed25519 device-signed HTTPS transport with bounded retries','Durable remote approvals and authenticated event history']},
+ {date:'Phase 4.3',version:'secure marketplace',title:'Secure signed marketplace',items:['Pinned Ed25519 registry indexes with expiry and revocation','SHA-256-bound packages and traversal-safe bounded extraction','Publisher trust, capability manifests and permission verification','Atomic upgrades, downgrade protection and durable package state']},
+ {date:'Phase 4.2',version:'benchmark gates',title:'Reproducible benchmark gates',items:['Strict YAML performance and reliability suites','Durable samples with bounded secret-redacted output','Median, nearest-rank p95 and pass-rate summaries','Baseline comparison with machine-safe regression exits']},
+ {date:'Phase 4.1',version:'release integrity',title:'Migrations and release supply chain',items:['Checksum-locked transactional SQLite migrations','Integrity-checked atomic database restore','Deterministic SPDX 2.3 software bills of materials','Ed25519 DSSE and SLSA provenance attestations']},
+ {date:'Phase 3.6',version:'device delegation',title:'Cryptographic device delegation',items:['Ed25519 proof-of-possession enrollment','Signed requests with durable nonce replay protection','Capability-scoped durable command queues and bounded leases','Immediate device revocation and command cancellation']},
+ {date:'Phase 3.5',version:'media and voice',title:'Durable media and voice pipeline',items:['Bounded streaming ingestion into a content-addressed store','SHA-256, size and MIME integrity enforcement','Pluggable platform media resolvers and portable CAS references','Cached OpenAI-compatible speech transcription']},
+ {date:'Phase 3.4',version:'channel adapters',title:'WhatsApp and Matrix adapters',items:['Meta webhook signature and challenge verification','Batched WhatsApp text and media normalization','Authenticated Matrix incremental sync with durable cursors','Matrix replies, threads and transaction-scoped delivery']},
+ {date:'Phase 3.3',version:'channel adapters',title:'Telegram, Discord and Slack adapters',items:['Telegram webhook verification and Bot API transport','Slack HMAC verification with replay-window enforcement','Discord Ed25519 interaction verification and REST transport','Secret-reference-only credentials and neutral media envelopes']},
+ {date:'Phase 3.2',version:'secure access',title:'Gateway identity, ACL and secure pairing',items:['Channel/account/sender identity binding','Salted one-time six-digit codes with five-minute expiry','Viewer, operator and owner permission roles','Immediate revocation and fail-closed gateway authorization']},
+ {date:'Phase 3.1',version:'durable gateway',title:'Channel-neutral durable gateway',items:['Strict text and media envelopes independent of any messaging vendor','SQLite/WAL inbox, transactional outbox and delivery deduplication','Atomic leases, restart recovery, integrity checks and dead letters','Async route and transport registry bridged to the canonical runner']},
+ {date:'Phase 2',version:'extensible runtime complete',title:'Native sandboxes & stable ACP',items:['Bubblewrap, Seatbelt and Windows restricted-token profiles','Required fail-closed mode with project-bounded writable mounts','ACP v1 over bounded JSON-RPC 2.0 stdio','Durable sessions, streamed updates, modes and cancellation','Runtime-wide five-minute timeout ceiling']},
+ {date:'Phase 2.3',version:'persistent automation',title:'Persistent automation scheduler',items:['Timezone-aware cron, intervals and one-shot missions','HMAC-signed webhooks with secret references and idempotency','Atomic leases, heartbeats, restart recovery and concurrency limits','Cancellation, exponential retry, dead letters and audited replay']},
+ {date:'Phase 2.2',version:'extensible runtime',title:'Durable extension hooks',items:['SQLite/WAL event delivery with priority and filters','Retries, timeout, cancellation and circuit breakers','Secret redaction, integrity hashes and restart recovery','Atomic registration from signed plugin manifests']},
+ {date:'Phase 1',version:'coding core',title:'Durable session branches',items:['Event-sourced forks at any visible event','SHA-256 integrity chains and deterministic replay','Semantic merge previews with provenance','Seven new agent-native session tools']},
+ {date:'Phase 1',version:'coding core',title:'LSP intelligence & worktrees',items:['Persistent language server supervision','Eight code intelligence tools','Mission-owned isolated worktrees','Cleanup, stale-lease recovery and ownership checks']},
+ {date:'Foundation',version:'sovereign runtime',title:'Long-horizon execution',items:['Durable mission engine and typed reasoning','Frontier model routing with dynamic budgets','Failure classification and stall freezing','Mission API, SSE and web console integration']},
+];
 </script>
-
-<template>
-  <div>
-    <PageHero
-      :eyebrow="t('changelog.hero.eyebrow')"
-      :title="t('changelog.hero.title')"
-      :lead="t('changelog.hero.lead')"
-    >
-      <!-- Pluralized count, driven by the locale's own CLDR plural rule. -->
-      <p class="entry-count">{{ t("changelog.entryCount", entries.length, { count: entries.length }) }}</p>
-    </PageHero>
-
-    <section class="section no-top">
-      <div class="container narrow">
-        <div class="change-list">
-          <article
-            v-for="entry in entries"
-            :key="entry.id"
-            :class="{ 'is-untranslated': !entry.translated }"
-          >
-            <div class="change-meta">
-              <span>{{ entry.date }}</span>
-              <code dir="ltr">{{ entry.version }}</code>
-            </div>
-            <div>
-              <h2>
-                {{ entry.title }}
-                <span
-                  v-if="!entry.translated"
-                  class="untranslated-badge"
-                  lang="en"
-                  dir="ltr"
-                  :title="t('changelog.untranslatedNotice', { language: languageName })"
-                >{{ t("changelog.untranslatedLabel") }}</span>
-              </h2>
-              <p v-if="!entry.translated" class="untranslated-notice">
-                {{ t("changelog.untranslatedNotice", { language: languageName }) }}
-              </p>
-              <!-- English fallback content is marked up as English for screen readers. -->
-              <ul :lang="entry.translated ? undefined : 'en'" :dir="entry.translated ? undefined : 'ltr'">
-                <li v-for="(item, i) in entry.items" :key="i">{{ item }}</li>
-              </ul>
-            </div>
-          </article>
-        </div>
-
-        <div class="history-link">
-          <a :href="`${github}/commits/main`" target="_blank" rel="noreferrer">
-            {{ t("changelog.historyLink") }}
-          </a>
-        </div>
-      </div>
-    </section>
-  </div>
-</template>
+<template><div><PageHero eyebrow="CHANGELOG" title="What changed, and why it matters." lead="A human-readable record of meaningful runtime improvements. Commit-level history remains available in the repository." />
+<section class="section no-top"><div class="container narrow"><div class="change-list"><article v-for="change in changes" :key="change.title"><div class="change-meta"><span>{{change.date}}</span><code>{{change.version}}</code></div><div><h2>{{change.title}}</h2><ul><li v-for="item in change.items" :key="item">{{item}}</li></ul></div></article></div><div class="history-link"><a href="https://github.com/flormariap/unknown-agent/commits/main" target="_blank">Browse complete commit history →</a></div></div></section></div></template>

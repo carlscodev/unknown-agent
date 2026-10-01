@@ -1,10 +1,5 @@
 <!doctype html>
-<!--
-  lang/dir are the English defaults. They are rewritten at runtime by
-  src/composables/useSeo.js and, for crawlers that do not run JavaScript,
-  statically per locale by scripts/prerender-seo.mjs at build time.
--->
-<html lang="en" dir="ltr">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -13,12 +8,12 @@
     <meta property="og:title" content="Unknown Agent — Build beyond the prompt" />
     <meta property="og:description" content="A sovereign, long-horizon AI engineering runtime with durable memory, real tools and verification gates." />
     <meta property="og:type" content="website" />
-    <meta property="og:locale" content="en_US" />
     <meta property="og:image" content="/social-card.svg" />
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <title>Unknown Agent — Build beyond the prompt</title>
   </head>
   <body>
+    <a class="skip-link" href="#main">Skip to content</a>
     <div id="app"></div>
     <script type="module" src="/src/main.js"></script>
   </body>

@@ -1,64 +1,9 @@
 <script setup>
-import { useI18n } from "vue-i18n";
 import PageHero from "../components/PageHero.vue";
 import UiIcon from "../components/UiIcon.vue";
-import { github } from "../content.js";
-
-const { t } = useI18n();
-
-const principles = ["proof", "sovereignty", "systems", "open"];
+const values=[['Proof over performance','A convincing answer is not the same as working software. We optimize for objective evidence.'],['Sovereignty over convenience','Your code, models, credentials and execution environment should remain under your control.'],['Systems over demos','Durability, cancellation, rollback and malformed-output handling matter after the first five minutes.'],['Open over opaque','The runtime is inspectable, extensible and MIT licensed. Trust can be verified.']];
 </script>
-
-<template>
-  <div>
-    <PageHero
-      :eyebrow="t('company.hero.eyebrow')"
-      :title="t('company.hero.title')"
-      :lead="t('company.hero.lead')"
-    />
-
-    <section class="section no-top">
-      <div class="container split">
-        <div>
-          <p class="eyebrow">{{ t("company.mission.eyebrow") }}</p>
-          <h2>{{ t("company.mission.title") }}</h2>
-        </div>
-        <p class="lede-sm">{{ t("company.mission.lead") }}</p>
-      </div>
-    </section>
-
-    <section class="section dark-panel">
-      <div class="container">
-        <div class="section-head">
-          <p class="eyebrow">{{ t("company.principles.eyebrow") }}</p>
-          <h2>{{ t("company.principles.title") }}</h2>
-        </div>
-        <div class="values-grid">
-          <article v-for="(id, i) in principles" :key="id">
-            <span>{{ String(i + 1).padStart(2, "0") }}</span>
-            <h3>{{ t(`company.principles.${id}.title`) }}</h3>
-            <p>{{ t(`company.principles.${id}.text`) }}</p>
-          </article>
-        </div>
-      </div>
-    </section>
-
-    <section class="section">
-      <div class="container split">
-        <div>
-          <p class="eyebrow">{{ t("company.build.eyebrow") }}</p>
-          <h2>{{ t("company.build.title") }}</h2>
-          <p class="lede-sm">{{ t("company.build.lead") }}</p>
-        </div>
-        <div class="stack-actions">
-          <a class="button primary large" :href="github" target="_blank" rel="noreferrer">
-            <UiIcon name="github" /> {{ t("company.build.primary") }}
-          </a>
-          <a class="button ghost large" :href="`${github}/blob/main/CONTRIBUTING.md`" target="_blank" rel="noreferrer">
-            {{ t("company.build.secondary") }}
-          </a>
-        </div>
-      </div>
-    </section>
-  </div>
-</template>
+<template><div><PageHero eyebrow="ABOUT" title="Software agents should be accountable systems." lead="Unknown Agent is an open engineering effort to make autonomous software work durable, verifiable and sovereign." />
+<section class="section no-top"><div class="container split"><div><p class="eyebrow">THE MISSION</p><h2>Turn model intelligence into dependable execution.</h2></div><p class="lede-sm">Models are improving quickly. The systems around them still lose state, repeat expensive work, cross boundaries and declare victory too early. Unknown Agent builds the runtime layer that closes that gap.</p></div></section>
+<section class="section dark-panel"><div class="container"><div class="section-head"><p class="eyebrow">PRINCIPLES</p><h2>What we optimize for.</h2></div><div class="values-grid"><article v-for="(v,i) in values" :key="v[0]"><span>0{{i+1}}</span><h3>{{v[0]}}</h3><p>{{v[1]}}</p></article></div></div></section>
+<section class="section"><div class="container split"><div><p class="eyebrow">BUILD WITH US</p><h2>An open runtime gets better in the open.</h2><p class="lede-sm">Review the architecture, report issues, improve an adapter, add a focused test or propose a capability.</p></div><div class="stack-actions"><a class="button primary large" href="https://github.com/flormariap/unknown-agent" target="_blank"><UiIcon name="github"/> Open GitHub</a><a class="button ghost large" href="https://github.com/flormariap/unknown-agent/blob/main/CONTRIBUTING.md" target="_blank">Contributing guide</a></div></div></section></div></template>
