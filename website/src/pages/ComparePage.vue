@@ -1,9 +1,68 @@
 <script setup>
+import { useI18n } from "vue-i18n";
 import PageHero from "../components/PageHero.vue";
 import UiIcon from "../components/UiIcon.vue";
+import { useLocalePath } from "../composables/useLocalePath.js";
 import { comparison } from "../content.js";
+
+const { t } = useI18n();
+const lp = useLocalePath();
+
+const scenarios = ["migrations", "regulated", "parallel"];
 </script>
-<template><div><PageHero eyebrow="COMPARE" title="Choose a runtime, not another chat window." lead="Unknown Agent is designed around durable execution and evidence. The distinction matters more as tasks become longer, riskier and more parallel." />
-<section class="section no-top"><div class="container"><div class="compare-table"><div class="tr head"><b>Capability</b><b>Unknown Agent</b><b>Cloud coding agent</b><b>Chat + tools</b></div><div v-for="row in comparison" :key="row[0]" class="tr"><strong>{{row[0]}}</strong><span v-for="(v,i) in row.slice(1)" :key="i" :class="{yes:v}"><UiIcon :name="v?'check':'close'" :size="17"/>{{v?'Included':'Limited'}}</span></div></div><p class="table-note">Category-level comparison based on commonly exposed product capabilities. Vendor features change; evaluate against your own requirements.</p></div></section>
-<section class="section dark-panel"><div class="container"><div class="section-head"><p class="eyebrow">WHEN IT FITS</p><h2>Built for work that cannot stop at “looks right.”</h2></div><div class="scenario-grid"><article><span>01</span><h3>Long migrations</h3><p>Durable checkpoints and resumable missions make multi-hour repository changes survivable.</p></article><article><span>02</span><h3>Regulated code</h3><p>Local execution, policy gates and replayable provenance keep operators in control.</p></article><article><span>03</span><h3>Parallel delivery</h3><p>Mission-owned worktrees isolate agents and semantic previews make merges legible.</p></article></div></div></section>
-<section class="section mini-cta"><div class="container"><h2>Test the difference on your own code.</h2><RouterLink class="button primary" to="/download">Install Unknown Agent <UiIcon name="arrow"/></RouterLink></div></section></div></template>
+
+<template>
+  <div>
+    <PageHero
+      :eyebrow="t('compare.hero.eyebrow')"
+      :title="t('compare.hero.title')"
+      :lead="t('compare.hero.lead')"
+    />
+
+    <section class="section no-top">
+      <div class="container">
+        <div class="compare-table">
+          <div class="tr head">
+            <b>{{ t("compare.table.capability") }}</b>
+            <b>{{ t("compare.table.unknownAgent") }}</b>
+            <b>{{ t("compare.table.cloudAgent") }}</b>
+            <b>{{ t("compare.table.chatTools") }}</b>
+          </div>
+          <div v-for="row in comparison" :key="row.id" class="tr">
+            <strong>{{ t(`comparison.rows.${row.id}`) }}</strong>
+            <span v-for="(value, i) in row.values" :key="i" :class="{ yes: value }">
+              <UiIcon :name="value ? 'check' : 'close'" :size="17" />
+              {{ value ? t("compare.table.included") : t("compare.table.limited") }}
+            </span>
+          </div>
+        </div>
+        <p class="table-note">{{ t("compare.table.note") }}</p>
+      </div>
+    </section>
+
+    <section class="section dark-panel">
+      <div class="container">
+        <div class="section-head">
+          <p class="eyebrow">{{ t("compare.scenarios.eyebrow") }}</p>
+          <h2>{{ t("compare.scenarios.title") }}</h2>
+        </div>
+        <div class="scenario-grid">
+          <article v-for="(id, i) in scenarios" :key="id">
+            <span>{{ String(i + 1).padStart(2, "0") }}</span>
+            <h3>{{ t(`compare.scenarios.${id}.title`) }}</h3>
+            <p>{{ t(`compare.scenarios.${id}.text`) }}</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section class="section mini-cta">
+      <div class="container">
+        <h2>{{ t("compare.cta.title") }}</h2>
+        <RouterLink class="button primary" :to="lp('download')">
+          {{ t("compare.cta.button") }} <UiIcon name="arrow" class="icon-directional" />
+        </RouterLink>
+      </div>
+    </section>
+  </div>
+</template>

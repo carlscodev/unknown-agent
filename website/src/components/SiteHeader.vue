@@ -1,29 +1,52 @@
 <script setup>
 import { ref, watch } from "vue";
 import { useRoute } from "vue-router";
+import { useI18n } from "vue-i18n";
 import LogoMark from "./LogoMark.vue";
 import UiIcon from "./UiIcon.vue";
+import LanguageSwitcher from "./LanguageSwitcher.vue";
+import { useLocalePath } from "../composables/useLocalePath.js";
 import { github } from "../content.js";
+
+const { t } = useI18n();
+const lp = useLocalePath();
 
 const open = ref(false);
 const route = useRoute();
 watch(() => route.path, () => (open.value = false));
-const links = [
-  ["Product", "/product"], ["Capabilities", "/capabilities"], ["Developers", "/developers"],
-  ["Security", "/security"], ["Roadmap", "/roadmap"],
-];
+
+/** Canonical page ids; labels come from the `nav.*` namespace. */
+const links = ["product", "capabilities", "developers", "security", "roadmap"];
 </script>
+
 <template>
   <header class="site-header">
     <div class="container nav-wrap">
-      <RouterLink to="/" class="wordmark" aria-label="Unknown Agent home"><LogoMark :size="30" /><span>UNKNOWN<br><b>AGENT</b></span></RouterLink>
-      <nav :class="{ open }" aria-label="Main navigation">
-        <RouterLink v-for="link in links" :key="link[1]" :to="link[1]">{{ link[0] }}</RouterLink>
-        <RouterLink to="/compare">Compare</RouterLink>
-        <div class="mobile-actions"><a :href="github" target="_blank" rel="noreferrer">GitHub</a><RouterLink class="button primary" to="/download">Download</RouterLink></div>
+      <RouterLink :to="lp('home')" class="wordmark" :aria-label="t('a11y.homeLink')">
+        <LogoMark :size="30" /><span>UNKNOWN<br /><b>AGENT</b></span>
+      </RouterLink>
+
+      <nav :class="{ open }" :aria-label="t('a11y.mainNav')">
+        <RouterLink v-for="name in links" :key="name" :to="lp(name)">{{ t(`nav.${name}`) }}</RouterLink>
+        <RouterLink :to="lp('compare')">{{ t("nav.compare") }}</RouterLink>
+        <div class="mobile-actions">
+          <a :href="github" target="_blank" rel="noreferrer">{{ t("nav.github") }}</a>
+          <RouterLink class="button primary" :to="lp('download')">{{ t("nav.download") }}</RouterLink>
+        </div>
+        <div class="mobile-lang"><LanguageSwitcher /></div>
       </nav>
-      <div class="nav-actions"><a class="icon-link" :href="github" target="_blank" rel="noreferrer" aria-label="GitHub"><UiIcon name="github" /></a><RouterLink class="button small primary" to="/download">Download</RouterLink></div>
-      <button class="menu-button" @click="open = !open" :aria-expanded="open" aria-label="Toggle menu"><UiIcon :name="open ? 'close' : 'menu'" /></button>
+
+      <div class="nav-actions">
+        <LanguageSwitcher />
+        <a class="icon-link" :href="github" target="_blank" rel="noreferrer" :aria-label="t('a11y.github')">
+          <UiIcon name="github" />
+        </a>
+        <RouterLink class="button small primary" :to="lp('download')">{{ t("nav.download") }}</RouterLink>
+      </div>
+
+      <button class="menu-button" :aria-expanded="open" :aria-label="t('a11y.toggleMenu')" @click="open = !open">
+        <UiIcon :name="open ? 'close' : 'menu'" />
+      </button>
     </div>
   </header>
 </template>
