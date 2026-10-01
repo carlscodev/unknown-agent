@@ -1,0 +1,944 @@
+{
+  "meta": {
+    "titleTemplate": "{page} — Unknown Agent",
+    "siteName": "Unknown Agent",
+    "home": {
+      "title": "Build beyond the prompt",
+      "description": "Unknown Agent is the sovereign AI engineering runtime that plans, builds, verifies and ships production software."
+    },
+    "product": {
+      "title": "Product",
+      "description": "The runtime between intent and evidence: models, code intelligence, isolated execution, durable memory and verification in one engineering loop."
+    },
+    "capabilities": {
+      "title": "Capabilities",
+      "description": "Typed, policy-aware runtime primitives: code intelligence, autonomous execution, reasoning control, evidence, durable memory and provider fabric."
+    },
+    "security": {
+      "title": "Security",
+      "description": "Policy before side effects, bounded filesystem, secret hygiene, process containment and auditable history. Agency without surrendering control."
+    },
+    "developers": {
+      "title": "Developers",
+      "description": "Install Unknown Agent with pipx or uv, pick your provider, and give it work with an objective finish line."
+    },
+    "download": {
+      "title": "Download",
+      "description": "Run Unknown Agent on your own machine or infrastructure. No proprietary daemon, no mandatory cloud workspace, no source-code upload."
+    },
+    "compare": {
+      "title": "Compare",
+      "description": "How Unknown Agent compares with cloud coding agents and chat-plus-tools setups on durability, verification and provider independence."
+    },
+    "roadmap": {
+      "title": "Roadmap",
+      "description": "From coding agent to sovereign agent platform: a staged program that keeps every layer testable and production-ready."
+    },
+    "changelog": {
+      "title": "Changelog",
+      "description": "A human-readable record of meaningful Unknown Agent runtime improvements."
+    },
+    "company": {
+      "title": "Company",
+      "description": "Unknown Agent is an open engineering effort to make autonomous software work durable, verifiable and sovereign."
+    },
+    "notFound": {
+      "title": "Not found",
+      "description": "This page does not exist."
+    },
+    "og": {
+      "title": "Unknown Agent — Build beyond the prompt",
+      "description": "A sovereign, long-horizon AI engineering runtime with durable memory, real tools and verification gates."
+    }
+  },
+  "a11y": {
+    "skipToContent": "Skip to content",
+    "homeLink": "Unknown Agent home",
+    "mainNav": "Main navigation",
+    "toggleMenu": "Toggle menu",
+    "github": "GitHub",
+    "footerNav": "Footer navigation"
+  },
+  "nav": {
+    "product": "Product",
+    "capabilities": "Capabilities",
+    "developers": "Developers",
+    "security": "Security",
+    "roadmap": "Roadmap",
+    "compare": "Compare",
+    "download": "Download",
+    "github": "GitHub"
+  },
+  "lang": {
+    "label": "Language",
+    "switcherLabel": "Change language",
+    "current": "Current language: {language}",
+    "select": "Select a language"
+  },
+  "common": {
+    "learnMore": "Learn more",
+    "copy": "Copy",
+    "copied": "Copied",
+    "copyCommand": "Copy command",
+    "terminal": "terminal"
+  },
+  "footer": {
+    "tagline": "The sovereign runtime for software that has to work.",
+    "availability": "Development builds available",
+    "columns": {
+      "product": {
+        "title": "Product",
+        "overview": "Overview",
+        "capabilities": "Capabilities",
+        "compare": "Compare",
+        "download": "Download"
+      },
+      "resources": {
+        "title": "Resources",
+        "developers": "Developers",
+        "security": "Security",
+        "changelog": "Changelog",
+        "roadmap": "Roadmap"
+      },
+      "project": {
+        "title": "Project",
+        "company": "Company",
+        "github": "GitHub",
+        "issues": "Issues",
+        "license": "License"
+      }
+    },
+    "copyright": "© {year} Unknown Agent.",
+    "built": "Built in the open · MIT licensed"
+  },
+  "capabilityCards": {
+    "longHorizon": {
+      "label": "Long-horizon runtime",
+      "text": "Durable missions survive restarts, freeze stalled work and resume without paying twice."
+    },
+    "parallelBranches": {
+      "label": "Parallel agent branches",
+      "text": "Fork sessions at any event, preserve ancestry and merge results with semantic conflict previews."
+    },
+    "codeIntelligence": {
+      "label": "Code intelligence",
+      "text": "Persistent LSP supervisors deliver definitions, references, symbols, diagnostics and precise edits."
+    },
+    "policy": {
+      "label": "Policy before action",
+      "text": "Every side effect crosses typed contracts, path boundaries, risk levels and permission checks."
+    },
+    "verification": {
+      "label": "Verification gates",
+      "text": "Builds, tests, linters and browser flows decide when work is done—not model confidence."
+    },
+    "memory": {
+      "label": "Memory with provenance",
+      "text": "Working, session and project memory stay replayable, attributable and under your control."
+    }
+  },
+  "phases": {
+    "p1": {
+      "status": "Complete",
+      "title": "Coding core",
+      "text": "Mission runtime, LSP intelligence, isolated worktrees, durable forks, tiered compaction and transactional mutations—all shipped."
+    },
+    "p2": {
+      "status": "Complete",
+      "title": "Extensible runtime",
+      "text": "Signed capabilities, durable hooks, persistent automation, native sandbox profiles and stable ACP/JSON-RPC are shipped."
+    },
+    "p3": {
+      "status": "Complete",
+      "title": "Omnichannel gateway",
+      "text": "Durable messaging, ACL pairing, five production channel adapters, content-addressed media, voice transcription and Ed25519 device delegation are live."
+    },
+    "p4": {
+      "status": "Complete",
+      "title": "Product ecosystem",
+      "text": "Signed desktop/mobile clients, release attestations, regression benchmarks, migrations and the verified extension marketplace are shipped."
+    }
+  },
+  "comparison": {
+    "rows": {
+      "durableMissions": "Durable missions",
+      "verificationGated": "Verification-gated completion",
+      "historicalForks": "Historical session forks",
+      "persistentLsp": "Persistent LSP supervision",
+      "providerIndependence": "Provider independence",
+      "localModels": "Local / offline models",
+      "policyChecked": "Policy-checked side effects",
+      "selfHosted": "Self-hosted web control plane"
+    }
+  },
+  "home": {
+    "releasePill": {
+      "badge": "NEW",
+      "text": "Durable channel-neutral gateway is live"
+    },
+    "hero": {
+      "titleLine1": "Build beyond",
+      "titleLine2": "the prompt.",
+      "lead": "A sovereign AI engineering runtime that plans deeply, acts through real tools, and keeps working until the proof is green.",
+      "ctaPrimary": "Get Unknown Agent",
+      "ctaSecondary": "Explore the runtime",
+      "note1": "No cloud lock-in",
+      "note2": "MIT licensed",
+      "note3": "Runs where your code lives"
+    },
+    "terminal": {
+      "mission": "mission / billing-portal",
+      "live": "LIVE",
+      "tokens": "tokens 28.4k",
+      "elapsed": "elapsed 06:42",
+      "branch": "branch main"
+    },
+    "trust": {
+      "label": "PROVIDER INDEPENDENT",
+      "more": "+17 MORE"
+    },
+    "difference": {
+      "eyebrow": "THE DIFFERENCE",
+      "titleLine1": "Not a chatbot.",
+      "titleLine2": "A completion system.",
+      "lead": "Unknown Agent owns the distance between a request and a verified result."
+    },
+    "proof": {
+      "eyebrow": "VERIFICATION, NOT VIBES",
+      "titleLine1": "The model proposes.",
+      "titleLine2": "The runtime proves.",
+      "lead": "Every mission ends at objective gates: tests, builds, lint, diagnostics and real browser flows. Failed evidence sends the agent back into the loop.",
+      "item1": "Repository-aware plans with explicit definitions of done",
+      "item2": "Isolated Git worktrees for safe parallel execution",
+      "item3": "Failure-aware retries that freeze unproductive loops",
+      "item4": "Replayable evidence and full event provenance",
+      "loop": {
+        "ship": "SHIP",
+        "shipNote": "only when green",
+        "plan": "PLAN",
+        "act": "ACT",
+        "observe": "OBSERVE",
+        "verify": "VERIFY"
+      }
+    },
+    "surfaces": {
+      "eyebrow": "ONE RUNTIME, EVERY SURFACE",
+      "titleLine1": "Start in the terminal.",
+      "titleLine2": "Continue anywhere.",
+      "lead": "CLI, terminal UI, browser control plane and API share the same policies, tools, sessions and durable state.",
+      "cliLabel": "CLI / TUI",
+      "codeLabel": "~/your-project",
+      "metricTools": "native tools",
+      "metricProviders": "providers",
+      "metricTests": "tests passing",
+      "sideEyebrow": "WEB CONTROL PLANE",
+      "sideTitle": "Your agents, live.",
+      "sideText": "Stream reasoning, inspect calls, preview artifacts and approve devices from a secure browser console.",
+      "sideLink": "See all surfaces"
+    },
+    "roadmap": {
+      "eyebrow": "THE ROAD AHEAD",
+      "title": "A complete agent platform.",
+      "link": "Full roadmap"
+    },
+    "cta": {
+      "eyebrow": "YOUR CODE. YOUR MODELS. YOUR AGENT.",
+      "titleLine1": "Give the work to something",
+      "titleLine2": "that can finish it.",
+      "installLabel": "install",
+      "primary": "Start building",
+      "secondary": "View on GitHub"
+    }
+  },
+  "product": {
+    "hero": {
+      "eyebrow": "PRODUCT",
+      "title": "The runtime between intent and evidence.",
+      "lead": "Unknown Agent coordinates models, code intelligence, isolated execution, durable memory and verification into one coherent engineering loop.",
+      "ctaPrimary": "Install the runtime",
+      "ctaSecondary": "Read developer guide"
+    },
+    "loop": {
+      "eyebrow": "MISSION LOOP"
+    },
+    "stages": {
+      "understand": {
+        "step": "01",
+        "title": "Understand",
+        "text": "Maps the repository, stack, conventions, commands, risks and relevant project memory before touching code."
+      },
+      "plan": {
+        "step": "02",
+        "title": "Plan",
+        "text": "Turns intent into typed, reviewable work with dependencies, acceptance criteria and verification gates."
+      },
+      "execute": {
+        "step": "03",
+        "title": "Execute",
+        "text": "Runs tools behind policy checks inside mission-owned worktrees. Every mutation is attributable."
+      },
+      "verify": {
+        "step": "04",
+        "title": "Verify",
+        "text": "Builds, tests, lints and drives Chromium. Evidence—not confidence—controls completion."
+      },
+      "recover": {
+        "step": "05",
+        "title": "Recover",
+        "text": "Classifies failures, replans counterfactuals and freezes loops after repeated non-progress."
+      }
+    },
+    "sovereign": {
+      "eyebrow": "SOVEREIGN BY DESIGN",
+      "title": "Your infrastructure is the product boundary.",
+      "lead": "Run local, choose any supported model, keep source and telemetry under your own controls. Unknown Agent is architecture—not a rented worker hidden behind an API.",
+      "portableTitle": "Provider-portable",
+      "portableText": "Route each phase to the right model.",
+      "localTitle": "Local-first",
+      "localText": "Ollama and offline operation are first-class.",
+      "policyTitle": "Policy-enforced",
+      "policyText": "Tools cannot skip the permission layer.",
+      "openTitle": "Open source",
+      "openText": "Inspect the runtime under the MIT license."
+    },
+    "shared": {
+      "eyebrow": "SHARED STATE",
+      "title": "One agent. Four ways in."
+    },
+    "surfaces": {
+      "terminal": {
+        "title": "Terminal",
+        "text": "A fast, adaptive TUI with streaming, model switching, command palette and machine-clean pipe output."
+      },
+      "web": {
+        "title": "Web console",
+        "text": "A self-hosted control plane with live tool inspection, artifact previews and device pairing."
+      },
+      "pythonApi": {
+        "title": "Python API",
+        "text": "Typed primitives for embedding the runtime, mission engine, providers and policy layer."
+      },
+      "events": {
+        "title": "Event stream",
+        "text": "Durable mission events for observability, resumption, external automation and audit."
+      }
+    },
+    "cta": {
+      "title": "See what the runtime can do.",
+      "button": "Explore capabilities"
+    }
+  },
+  "capabilities": {
+    "hero": {
+      "eyebrow": "CAPABILITIES",
+      "title": "A serious toolbelt for serious work.",
+      "lead": "Every capability is built as a typed, policy-aware primitive that can be tested, observed, cancelled and composed."
+    },
+    "stack": {
+      "eyebrow": "FULL STACK",
+      "title": "Depth at every layer.",
+      "lead": "Not a list of prompts. A set of interoperable runtime systems."
+    },
+    "groups": {
+      "codeIntelligence": {
+        "name": "Code intelligence",
+        "i1": "Persistent multi-language LSP supervisors",
+        "i2": "Definitions, references and workspace symbols",
+        "i3": "Diagnostics with restart recovery",
+        "i4": "AST-aware search and structured edits"
+      },
+      "autonomousExecution": {
+        "name": "Autonomous execution",
+        "i1": "Durable mission DAGs",
+        "i2": "Role-specialized subagents",
+        "i3": "Mission-owned Git worktrees",
+        "i4": "Cancellation through process groups"
+      },
+      "reasoningControl": {
+        "name": "Reasoning control",
+        "i1": "Dynamic thinking budgets by phase",
+        "i2": "Provider-native prompt caching",
+        "i3": "Typed Pydantic v2 decisions",
+        "i4": "Stall detection and forced replanning"
+      },
+      "evidenceSafety": {
+        "name": "Evidence & safety",
+        "i1": "Build, test and lint gates",
+        "i2": "Headless Chromium verification",
+        "i3": "Deny-by-default path policy",
+        "i4": "Append-only event telemetry"
+      },
+      "durableMemory": {
+        "name": "Durable memory",
+        "i1": "Working, session and project layers",
+        "i2": "Event-sourced session forks",
+        "i3": "Hash-chain integrity checks",
+        "i4": "Semantic merge conflict previews"
+      },
+      "providerFabric": {
+        "name": "Provider fabric",
+        "i1": "21 provider adapters",
+        "i2": "OpenAI and Anthropic native APIs",
+        "i3": "OpenRouter and compatible gateways",
+        "i4": "Ollama and offline fallback"
+      }
+    },
+    "cta": {
+      "title": "Put the full runtime on your machine.",
+      "button": "Download Unknown Agent"
+    }
+  },
+  "security": {
+    "hero": {
+      "eyebrow": "SECURITY",
+      "title": "Agency without surrendering control.",
+      "lead": "Autonomy increases the cost of weak boundaries. Unknown Agent treats policy, provenance and cancellation as runtime fundamentals—not optional wrappers.",
+      "badgeTitle": "Open security model",
+      "badgeText": "Inspectable source · MIT license · self-hosted control plane"
+    },
+    "controls": {
+      "policy": {
+        "title": "Policy before side effects",
+        "text": "Every tool declares risk and crosses a centralized policy decision before changing files, launching processes or reaching the network."
+      },
+      "filesystem": {
+        "title": "Bounded filesystem",
+        "text": "Canonical path validation and deny rules keep mutations inside explicitly allowed roots."
+      },
+      "secrets": {
+        "title": "Secret hygiene",
+        "text": "Credential references are stored separately with restrictive permissions; logs and UI surfaces redact sensitive values."
+      },
+      "process": {
+        "title": "Process containment",
+        "text": "No-shell execution by default, timeouts and process-group cancellation prevent orphan workloads."
+      },
+      "audit": {
+        "title": "Auditable history",
+        "text": "Mission and session events retain identity, causality, inputs, outputs and cryptographic integrity links."
+      },
+      "access": {
+        "title": "Controlled access",
+        "text": "The web control plane uses rotating bearer tokens, role-aware sessions and explicit six-digit device pairing."
+      },
+      "extensions": {
+        "title": "Signed extensions",
+        "text": "Ed25519 manifests bind publisher trust, exact source hashes, runtime compatibility, permissions and declared capabilities before code import."
+      },
+      "hooks": {
+        "title": "Contained hooks",
+        "text": "Runtime hooks receive redacted events through timeout, retry, circuit-breaker and dead-letter boundaries; malformed output cannot stop a mission."
+      },
+      "automation": {
+        "title": "Signed automation",
+        "text": "Webhook secrets remain references; constant-time HMAC verification, idempotency keys, expiring leases, bounded retries and hash-linked audit records contain autonomous scheduling."
+      },
+      "sandbox": {
+        "title": "Native containment",
+        "text": "Workspace and isolated profiles use platform-native process, mount and network boundaries; required mode fails closed when its backend is unavailable."
+      },
+      "acp": {
+        "title": "Bounded ACP",
+        "text": "ACP sessions use strict JSON-RPC schemas, project-scoped working directories, atomic private metadata, concurrent cancellation and a five-minute request ceiling."
+      },
+      "messaging": {
+        "title": "Contained messaging",
+        "text": "Inbound deliveries are deduplicated and redacted before persistence; integrity checks, leases, bounded retries and a transactional outbox contain channel failures."
+      }
+    },
+    "threat": {
+      "eyebrow": "THREAT MODEL",
+      "title": "Assume output can be wrong.",
+      "lead": "Model text, tool arguments, external pages and subprocess output are untrusted. Typed validation and permission boundaries contain malformed or adversarial output before it becomes a side effect.",
+      "flow1": "Untrusted intent",
+      "flow2": "Schema validation",
+      "flow3": "Policy decision",
+      "flow4": "Bounded execution",
+      "flow5": "Recorded evidence"
+    },
+    "reporting": {
+      "eyebrow": "REPORTING",
+      "title": "Found a vulnerability?",
+      "lead": "Please use private vulnerability reporting rather than a public issue. Include reproduction details, affected versions and potential impact.",
+      "button": "Report privately",
+      "cardLabel": "SECURITY.md",
+      "cardText": "Our disclosure process, supported versions and response expectations live with the source.",
+      "cardLink": "Read security policy →"
+    }
+  },
+  "developers": {
+    "hero": {
+      "eyebrow": "DEVELOPERS",
+      "title": "From zero to verified in three commands.",
+      "lead": "Install it as an isolated Python application, choose your provider, and give it work with an objective finish line."
+    },
+    "tabs": {
+      "quick": "Quickstart",
+      "verify": "Plan & verify",
+      "web": "Control plane"
+    },
+    "install": {
+      "eyebrow": "INSTALLATION",
+      "titleLine1": "Python-first.",
+      "titleLine2": "Project-agnostic.",
+      "lead": "Use pipx or uv for an isolated install. Unknown Agent then discovers each repository's actual toolchain rather than imposing one.",
+      "recommended": "recommended",
+      "fastPath": "fast path"
+    },
+    "reference": {
+      "eyebrow": "REFERENCE",
+      "title": "Build on the runtime.",
+      "config": {
+        "title": "Configuration",
+        "text": "Providers, profiles, policies and project-local settings."
+      },
+      "toolApi": {
+        "title": "Tool API",
+        "text": "Typed tool contracts, context, risk levels and results."
+      },
+      "missionEngine": {
+        "title": "Mission engine",
+        "text": "Durable plans, subtasks, retries, events and resumption."
+      },
+      "webApi": {
+        "title": "Web API",
+        "text": "FastAPI endpoints, WebSocket events and device sessions."
+      },
+      "plugins": {
+        "title": "Plugins",
+        "text": "Package and register extensions without patching the core."
+      },
+      "contributing": {
+        "title": "Contributing",
+        "text": "Development setup, tests, style and pull requests."
+      }
+    },
+    "cta": {
+      "title": "Prefer to inspect first?",
+      "button": "Browse the source"
+    }
+  },
+  "download": {
+    "hero": {
+      "eyebrow": "DOWNLOAD",
+      "title": "Put the agent where the code is.",
+      "lead": "Unknown Agent runs on your machine or infrastructure. No proprietary daemon, mandatory cloud workspace or source-code upload.",
+      "ctaPrimary": "Latest release",
+      "ctaSecondary": "Source code"
+    },
+    "pipx": {
+      "recommended": "RECOMMENDED",
+      "title": "Install with pipx",
+      "textBefore": "Keeps Unknown Agent and its dependencies isolated from your system Python while exposing",
+      "textAfter": "globally.",
+      "thenRun": "Then run",
+      "setupLabel": "guided setup",
+      "setupText": "The setup panel validates your provider, fetches available models, stores credentials safely and runs a final connection check."
+    },
+    "platforms": {
+      "eyebrow": "PLATFORMS",
+      "title": "Your system. Your choice.",
+      "linux": {
+        "name": "Linux",
+        "status": "Primary platform",
+        "text": "pipx, uv or managed venv"
+      },
+      "macos": {
+        "name": "macOS",
+        "status": "Fully supported",
+        "text": "pipx, uv or standard venv"
+      },
+      "windows": {
+        "name": "Windows",
+        "status": "PowerShell ready",
+        "text": "pipx via py launcher"
+      },
+      "req1": "Requires Python 3.11+",
+      "req2": "Git 2.30+",
+      "req3": "Optional: Node.js, Chromium, Docker"
+    },
+    "installer": {
+      "eyebrow": "SAFE INSTALLER",
+      "title": "Prefer a guided shell install?",
+      "lead": "Download, inspect, then run the repository installer. It never uses sudo, never writes outside your home directory and supports clean removal.",
+      "label": "download first"
+    },
+    "client": {
+      "eyebrow": "DESKTOP + MOBILE",
+      "title": "Install the secure client.",
+      "lead": "Use the bundled encrypted PWA immediately, or download signed Electron, Android and iOS packages from Releases. Native builds share the same audited offline runtime and signed enrollment protocol.",
+      "button": "Native releases",
+      "label": "bundled client"
+    },
+    "cta": {
+      "title": "Need help choosing a provider?",
+      "button": "Open quickstart"
+    }
+  },
+  "compare": {
+    "hero": {
+      "eyebrow": "COMPARE",
+      "title": "Choose a runtime, not another chat window.",
+      "lead": "Unknown Agent is designed around durable execution and evidence. The distinction matters more as tasks become longer, riskier and more parallel."
+    },
+    "table": {
+      "capability": "Capability",
+      "unknownAgent": "Unknown Agent",
+      "cloudAgent": "Cloud coding agent",
+      "chatTools": "Chat + tools",
+      "included": "Included",
+      "limited": "Limited",
+      "note": "Category-level comparison based on commonly exposed product capabilities. Vendor features change; evaluate against your own requirements."
+    },
+    "scenarios": {
+      "eyebrow": "WHEN IT FITS",
+      "title": "Built for work that cannot stop at “looks right.”",
+      "migrations": {
+        "title": "Long migrations",
+        "text": "Durable checkpoints and resumable missions make multi-hour repository changes survivable."
+      },
+      "regulated": {
+        "title": "Regulated code",
+        "text": "Local execution, policy gates and replayable provenance keep operators in control."
+      },
+      "parallel": {
+        "title": "Parallel delivery",
+        "text": "Mission-owned worktrees isolate agents and semantic previews make merges legible."
+      }
+    },
+    "cta": {
+      "title": "Test the difference on your own code.",
+      "button": "Install Unknown Agent"
+    }
+  },
+  "roadmap": {
+    "hero": {
+      "eyebrow": "ROADMAP",
+      "title": "From coding agent to sovereign agent platform.",
+      "lead": "A staged program keeps every layer useful, testable and production-ready before the next one compounds it."
+    },
+    "map": {
+      "eyebrow": "DELIVERY MAP",
+      "title": "What each horizon contains."
+    },
+    "detail": {
+      "foundation": {
+        "title": "Foundation shipped",
+        "i1": "Typed reasoning protocol",
+        "i2": "Durable mission engine",
+        "i3": "AST and repository intelligence",
+        "i4": "Provider routing and prompt caching",
+        "i5": "Web control plane and event stream"
+      },
+      "codingCore": {
+        "title": "Coding core shipped",
+        "i1": "Persistent LSP tools",
+        "i2": "Mission-linked Git worktrees",
+        "i3": "Event-sourced session forks",
+        "i4": "Tiered context compaction",
+        "i5": "Transactional mutation queues"
+      },
+      "extensible": {
+        "title": "Extensible runtime — shipped",
+        "i1": "Signed capability manifests",
+        "i2": "Hook and event bus",
+        "i3": "Persistent cron and signed-webhook scheduler",
+        "i4": "Native cross-platform sandbox profiles",
+        "i5": "Stable JSON-RPC / ACP v1 service"
+      },
+      "omnichannel": {
+        "title": "Omnichannel & ecosystem — complete",
+        "i1": "Channel-neutral durable gateway — shipped",
+        "i2": "Five messaging adapters, media, voice and delegation — shipped",
+        "i3": "Supply-chain, benchmarks and marketplace — shipped",
+        "i4": "Encrypted desktop/mobile PWA — shipped",
+        "i5": "Signed Electron, Android and iOS release pipelines — shipped"
+      }
+    },
+    "principle": {
+      "eyebrow": "OPERATING PRINCIPLE",
+      "title": "No simulated checkmarks.",
+      "lead": "A roadmap item ships only with typed contracts, permissions before side effects, durable state, real cancellation, telemetry, malformed-output containment and focused failure-path tests.",
+      "button": "Follow development"
+    }
+  },
+  "company": {
+    "hero": {
+      "eyebrow": "ABOUT",
+      "title": "Software agents should be accountable systems.",
+      "lead": "Unknown Agent is an open engineering effort to make autonomous software work durable, verifiable and sovereign."
+    },
+    "mission": {
+      "eyebrow": "THE MISSION",
+      "title": "Turn model intelligence into dependable execution.",
+      "lead": "Models are improving quickly. The systems around them still lose state, repeat expensive work, cross boundaries and declare victory too early. Unknown Agent builds the runtime layer that closes that gap."
+    },
+    "principles": {
+      "eyebrow": "PRINCIPLES",
+      "title": "What we optimize for.",
+      "proof": {
+        "title": "Proof over performance",
+        "text": "A convincing answer is not the same as working software. We optimize for objective evidence."
+      },
+      "sovereignty": {
+        "title": "Sovereignty over convenience",
+        "text": "Your code, models, credentials and execution environment should remain under your control."
+      },
+      "systems": {
+        "title": "Systems over demos",
+        "text": "Durability, cancellation, rollback and malformed-output handling matter after the first five minutes."
+      },
+      "open": {
+        "title": "Open over opaque",
+        "text": "The runtime is inspectable, extensible and MIT licensed. Trust can be verified."
+      }
+    },
+    "build": {
+      "eyebrow": "BUILD WITH US",
+      "title": "An open runtime gets better in the open.",
+      "lead": "Review the architecture, report issues, improve an adapter, add a focused test or propose a capability.",
+      "primary": "Open GitHub",
+      "secondary": "Contributing guide"
+    }
+  },
+  "changelog": {
+    "hero": {
+      "eyebrow": "CHANGELOG",
+      "title": "What changed, and why it matters.",
+      "lead": "A human-readable record of meaningful runtime improvements. Commit-level history remains available in the repository."
+    },
+    "historyLink": "Browse complete commit history →",
+    "untranslatedNotice": "This entry has not been translated into {language} yet and is shown in English.",
+    "untranslatedLabel": "English",
+    "entryCount": "No entries | {count} entry | {count} entries",
+    "entries": {
+      "hardening": {
+        "date": "Current",
+        "version": "platform hardening",
+        "title": "Warning-free validation baseline",
+        "items": [
+          "Deprecated pathspec matching migrated to GitIgnoreSpec",
+          "Maintained multipart and HTTP test-client integrations",
+          "Accurate secret-persistence regression assertion",
+          "937 passing tests with no warning output"
+        ]
+      },
+      "nativeEcosystem": {
+        "date": "Phase 4 complete",
+        "version": "native ecosystem",
+        "title": "Signed native product ecosystem",
+        "items": [
+          "Electron packages for Linux, macOS and Windows",
+          "Capacitor Android and iOS projects with store signing",
+          "Cross-platform CI builds and fail-closed release credentials",
+          "Native checksums, SPDX SBOM and signed SLSA provenance"
+        ]
+      },
+      "packagedClient": {
+        "date": "Phase 4.6",
+        "version": "packaged client",
+        "title": "Packaged client distribution",
+        "items": [
+          "ua client serves the bundled production PWA and sync API",
+          "Direct TLS certificate support for remote and mobile access",
+          "End-to-end signed enrollment, sync and replay rejection tests",
+          "Prebuilt assets included in Python package releases"
+        ]
+      },
+      "installableClient": {
+        "date": "Phase 4.5",
+        "version": "installable client",
+        "title": "Installable desktop and mobile PWA",
+        "items": [
+          "Responsive offline inbox, messaging and approval UI",
+          "Non-exportable WebCrypto identity and encrypted IndexedDB state",
+          "Signed device enrollment and durable sync API endpoints",
+          "Install manifest and service-worker offline shell"
+        ]
+      },
+      "clientRuntime": {
+        "date": "Phase 4.4",
+        "version": "client runtime",
+        "title": "Secure desktop and mobile client runtime",
+        "items": [
+          "ChaCha20-Poly1305 encrypted offline state",
+          "Idempotent operation queue and atomic cursor synchronization",
+          "Ed25519 device-signed HTTPS transport with bounded retries",
+          "Durable remote approvals and authenticated event history"
+        ]
+      },
+      "marketplace": {
+        "date": "Phase 4.3",
+        "version": "secure marketplace",
+        "title": "Secure signed marketplace",
+        "items": [
+          "Pinned Ed25519 registry indexes with expiry and revocation",
+          "SHA-256-bound packages and traversal-safe bounded extraction",
+          "Publisher trust, capability manifests and permission verification",
+          "Atomic upgrades, downgrade protection and durable package state"
+        ]
+      },
+      "benchmarks": {
+        "date": "Phase 4.2",
+        "version": "benchmark gates",
+        "title": "Reproducible benchmark gates",
+        "items": [
+          "Strict YAML performance and reliability suites",
+          "Durable samples with bounded secret-redacted output",
+          "Median, nearest-rank p95 and pass-rate summaries",
+          "Baseline comparison with machine-safe regression exits"
+        ]
+      },
+      "releaseIntegrity": {
+        "date": "Phase 4.1",
+        "version": "release integrity",
+        "title": "Migrations and release supply chain",
+        "items": [
+          "Checksum-locked transactional SQLite migrations",
+          "Integrity-checked atomic database restore",
+          "Deterministic SPDX 2.3 software bills of materials",
+          "Ed25519 DSSE and SLSA provenance attestations"
+        ]
+      },
+      "deviceDelegation": {
+        "date": "Phase 3.6",
+        "version": "device delegation",
+        "title": "Cryptographic device delegation",
+        "items": [
+          "Ed25519 proof-of-possession enrollment",
+          "Signed requests with durable nonce replay protection",
+          "Capability-scoped durable command queues and bounded leases",
+          "Immediate device revocation and command cancellation"
+        ]
+      },
+      "mediaVoice": {
+        "date": "Phase 3.5",
+        "version": "media and voice",
+        "title": "Durable media and voice pipeline",
+        "items": [
+          "Bounded streaming ingestion into a content-addressed store",
+          "SHA-256, size and MIME integrity enforcement",
+          "Pluggable platform media resolvers and portable CAS references",
+          "Cached OpenAI-compatible speech transcription"
+        ]
+      },
+      "whatsappMatrix": {
+        "date": "Phase 3.4",
+        "version": "channel adapters",
+        "title": "WhatsApp and Matrix adapters",
+        "items": [
+          "Meta webhook signature and challenge verification",
+          "Batched WhatsApp text and media normalization",
+          "Authenticated Matrix incremental sync with durable cursors",
+          "Matrix replies, threads and transaction-scoped delivery"
+        ]
+      },
+      "telegramDiscordSlack": {
+        "date": "Phase 3.3",
+        "version": "channel adapters",
+        "title": "Telegram, Discord and Slack adapters",
+        "items": [
+          "Telegram webhook verification and Bot API transport",
+          "Slack HMAC verification with replay-window enforcement",
+          "Discord Ed25519 interaction verification and REST transport",
+          "Secret-reference-only credentials and neutral media envelopes"
+        ]
+      },
+      "gatewayAccess": {
+        "date": "Phase 3.2",
+        "version": "secure access",
+        "title": "Gateway identity, ACL and secure pairing",
+        "items": [
+          "Channel/account/sender identity binding",
+          "Salted one-time six-digit codes with five-minute expiry",
+          "Viewer, operator and owner permission roles",
+          "Immediate revocation and fail-closed gateway authorization"
+        ]
+      },
+      "durableGateway": {
+        "date": "Phase 3.1",
+        "version": "durable gateway",
+        "title": "Channel-neutral durable gateway",
+        "items": [
+          "Strict text and media envelopes independent of any messaging vendor",
+          "SQLite/WAL inbox, transactional outbox and delivery deduplication",
+          "Atomic leases, restart recovery, integrity checks and dead letters",
+          "Async route and transport registry bridged to the canonical runner"
+        ]
+      },
+      "sandboxAcp": {
+        "date": "Phase 2",
+        "version": "extensible runtime complete",
+        "title": "Native sandboxes & stable ACP",
+        "items": [
+          "Bubblewrap, Seatbelt and Windows restricted-token profiles",
+          "Required fail-closed mode with project-bounded writable mounts",
+          "ACP v1 over bounded JSON-RPC 2.0 stdio",
+          "Durable sessions, streamed updates, modes and cancellation",
+          "Runtime-wide five-minute timeout ceiling"
+        ]
+      },
+      "scheduler": {
+        "date": "Phase 2.3",
+        "version": "persistent automation",
+        "title": "Persistent automation scheduler",
+        "items": [
+          "Timezone-aware cron, intervals and one-shot missions",
+          "HMAC-signed webhooks with secret references and idempotency",
+          "Atomic leases, heartbeats, restart recovery and concurrency limits",
+          "Cancellation, exponential retry, dead letters and audited replay"
+        ]
+      },
+      "hooks": {
+        "date": "Phase 2.2",
+        "version": "extensible runtime",
+        "title": "Durable extension hooks",
+        "items": [
+          "SQLite/WAL event delivery with priority and filters",
+          "Retries, timeout, cancellation and circuit breakers",
+          "Secret redaction, integrity hashes and restart recovery",
+          "Atomic registration from signed plugin manifests"
+        ]
+      },
+      "sessionBranches": {
+        "date": "Phase 1",
+        "version": "coding core",
+        "title": "Durable session branches",
+        "items": [
+          "Event-sourced forks at any visible event",
+          "SHA-256 integrity chains and deterministic replay",
+          "Semantic merge previews with provenance",
+          "Seven new agent-native session tools"
+        ]
+      },
+      "lspWorktrees": {
+        "date": "Phase 1",
+        "version": "coding core",
+        "title": "LSP intelligence & worktrees",
+        "items": [
+          "Persistent language server supervision",
+          "Eight code intelligence tools",
+          "Mission-owned isolated worktrees",
+          "Cleanup, stale-lease recovery and ownership checks"
+        ]
+      },
+      "longHorizon": {
+        "date": "Foundation",
+        "version": "sovereign runtime",
+        "title": "Long-horizon execution",
+        "items": [
+          "Durable mission engine and typed reasoning",
+          "Frontier model routing with dynamic budgets",
+          "Failure classification and stall freezing",
+          "Mission API, SSE and web console integration"
+        ]
+      }
+    }
+  },
+  "notFound": {
+    "code": "404 / UNKNOWN ROUTE",
+    "title": "This branch does not exist.",
+    "text": "The page may have moved, or the mission took a wrong turn.",
+    "button": "Return home"
+  }
+}
