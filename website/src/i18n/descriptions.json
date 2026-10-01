@@ -1,0 +1,80 @@
+{
+  "_README": "Translator context. Every key in en.json must be covered here, either directly or by a parent namespace (a description on `home.hero` covers `home.hero.lead`). `npm run i18n:check` fails when a source key has no context. Keep entries short and say WHERE the string appears and WHAT constrains it (length, tone, glossary). Terminology rules live in docs/i18n-glossary.md.",
+
+  "meta": "SEO metadata. Never shown on the page itself — it goes into <title>, <meta name=description>, and Open Graph tags. Titles should stay under ~60 characters and descriptions under ~155 so search engines do not truncate them. 'Unknown Agent' is a brand name and is never translated.",
+  "meta.titleTemplate": "Pattern for the browser tab title. `{page}` is replaced by the page title. Keep the separator and the brand name; only reorder if your language requires it.",
+  "meta.siteName": "Brand name. Do not translate.",
+  "meta.og": "Open Graph title and description used when the site is shared on social networks. Should read as a standalone pitch, not a page title.",
+
+  "a11y": "Accessibility strings: aria-labels and the skip link. Never visible to sighted users, but read aloud by screen readers. Must be short, literal and descriptive of the action — not marketing copy.",
+
+  "nav": "Main header navigation labels. Very tight space: aim for one or two words. These must stay short or the desktop navigation bar wraps. Also reused in the mobile menu.",
+
+  "lang": "Language switcher UI. `{language}` is interpolated with the endonym of the active language (for example 'Deutsch'), which is itself never translated.",
+
+  "common": "Strings reused across several pages: generic buttons and labels. 'Copy'/'Copied' sit inside a narrow code-window button — keep them to a single short word if possible.",
+
+  "footer": "Site footer: tagline, link columns and the bottom legal line. Column titles are category headings; link labels mirror the nav labels and must stay short.",
+  "footer.copyright": "`{year}` is the current year, inserted automatically. Keep the © symbol and the brand name.",
+  "footer.availability": "Status line next to a small indicator dot, stating that only development builds exist so far. Do not overstate maturity.",
+
+  "capabilityCards": "The six product capability cards shown on the home page and the capabilities page. `label` is a card heading (2–4 words, it must not wrap past two lines); `text` is one sentence of supporting copy. Technical terms LSP, AST and runtime stay as-is.",
+
+  "phases": "The four roadmap phases, shown as compact cards on the home page and as a timeline on the roadmap page. `status` is a state word rendered in a small pill — keep it to one word. All four phases are genuinely complete; do not soften this into 'in progress'.",
+
+  "comparison": "Row labels for the comparison table on /compare. Extremely tight horizontal space — these must be as short as the meaning allows.",
+
+  "home": "The home page. The most visible and most translated-over copy on the site: prioritise natural, confident marketing language over literal translation.",
+  "home.hero": "Above-the-fold hero. `titleLine1` and `titleLine2` are rendered on two separate lines with a line break between them, and `titleLine2` is italic and emphasised — split the sentence so the emphasis lands on the second line. The whole headline must stay short; it is set very large and will overflow on mobile otherwise.",
+  "home.releasePill": "Small announcement pill above the headline. `badge` is a tiny uppercase tag (think 'NEW'); `text` is a single short clause.",
+  "home.terminal": "Decorative labels around a fake terminal window. These imitate real CLI output: keep them lowercase and terse. Numbers follow your locale's conventions.",
+  "home.trust": "Strip of provider logos. `label` is an uppercase eyebrow; `more` indicates how many additional providers exist.",
+  "home.difference": "Section contrasting Unknown Agent with chatbots. Two-line heading, same line-break rule as the hero.",
+  "home.proof": "Verification section. `item1`–`item4` are bullet points in a checklist; keep them as noun phrases without final punctuation.",
+  "home.proof.loop": "Labels inside a circular diagram. Severe space constraints: single uppercase words only. If your language has no short equivalent, prefer a shorter near-synonym over a long exact term.",
+  "home.surfaces": "Section about the four ways to use the agent. `metricTools`, `metricProviders` and `metricTests` are captions placed under large numbers (74, 21, 804) — write them as plain noun phrases that read correctly after a number.",
+  "home.cta": "Final call to action at the bottom of the home page.",
+
+  "product": "The /product page, explaining the mission loop and the sovereignty model.",
+  "product.stages": "The four stages of the mission loop. `step` is a two-digit number and must not be translated. `title` is a short imperative phrase.",
+  "product.sovereign": "Four short principle rows: each has a bold title (1–3 words) and a one-line explanation. Space is tight.",
+  "product.surfaces": "The five product surfaces (CLI, TUI, web console, HTTP API, event stream). Interface names such as CLI, API and HTTP stay as-is.",
+
+  "capabilities": "The /capabilities page.",
+  "capabilities.groups": "Six capability groups, each with four bullet items (`i1`–`i4`). Bullets are terse noun phrases without final punctuation, rendered next to a check icon. Protocol and library names (LSP, AST, DAG, Pydantic, Chromium, OpenAI, Anthropic, OpenRouter, Ollama) are never translated.",
+
+  "security": "The /security page. Tone is precise and factual, never reassuring-for-its-own-sake. Do not weaken security claims and do not strengthen them.",
+  "security.controls": "Twelve security controls, each a short title plus one explanatory sentence, laid out in a grid. Cryptographic and protocol names (Ed25519, HMAC, SHA-256, ChaCha20-Poly1305, JSON-RPC, ACP, SQLite/WAL) are never translated. 'fails closed' is a term of art meaning it denies access on error — translate the meaning, not the words.",
+  "security.threat": "Threat model section. `flow1`–`flow5` are the five steps of a vertical flow diagram, separated by arrows: each must be two or three words at most.",
+  "security.reporting": "Vulnerability disclosure section. `cardLabel` is the literal filename SECURITY.md and must not be translated.",
+
+  "developers": "The /developers page: installation and API reference entry points.",
+  "developers.tabs": "Three tabs above a code console. Very narrow: one or two words each.",
+  "developers.install": "`titleLine1` and `titleLine2` are rendered on two lines with a break between them.",
+  "developers.reference": "Six documentation link cards, each a title plus a one-line summary. 'Tool API', 'Web API' and 'Plugins' refer to named subsystems — translate descriptively but keep them recognisable.",
+
+  "download": "The /download page.",
+  "download.pipx": "Installation instructions for pipx. `textBefore` and `textAfter` wrap around an inline <code>ua</code> element, so the sentence is split in two: `textBefore` + the literal code `ua` + `textAfter`. Make sure the two halves read as one grammatical sentence around a code token, and reorder them if your language needs the object elsewhere.",
+  "download.platforms": "Three supported platforms. `name` is an OS name and is never translated. `status` is a short support-level phrase; `text` lists install methods and keeps tool names (pipx, uv, venv, py) untranslated. `req1`–`req3` are requirement chips with very little space.",
+  "download.installer": "Shell installer section. Do not soften the safety claims: the installer genuinely never uses sudo and never writes outside the home directory.",
+  "download.client": "Desktop and mobile client section. 'PWA', 'Electron', 'Android', 'iOS' and 'Releases' are product names and stay as-is.",
+
+  "compare": "The /compare page.",
+  "compare.table": "Comparison table. `capability` is the first column heading; the other three are the compared categories. `included` and `limited` are cell values next to a check or cross icon and must be very short. `note` is a disclaimer — keep it hedged and do not make it more assertive.",
+  "compare.scenarios": "Three scenarios where the product fits, each a short title plus one sentence. The section heading contains typographic quotation marks around an informal phrase meaning 'superficially correct' — use your language's own quotation marks.",
+
+  "roadmap": "The /roadmap page.",
+  "roadmap.detail": "Four delivery horizons, each with five bullet items (`i1`–`i5`). Several items end with an em-dash followed by a shipped marker; keep that structure. All listed work is genuinely complete.",
+  "roadmap.principle": "Statement of engineering standards. 'No simulated checkmarks' means the project refuses to mark something done without evidence — translate the intent.",
+
+  "company": "The /company page: mission and principles.",
+  "company.principles": "Four principles, each phrased as an 'X over Y' trade-off. Preserve the contrast structure if your language supports it naturally; otherwise express the same preference clearly rather than forcing the pattern.",
+
+  "changelog": "The /changelog page.",
+  "changelog.untranslatedNotice": "Shown above a changelog entry that exists only in English. `{language}` is interpolated with the endonym of the active language. Be matter-of-fact, not apologetic.",
+  "changelog.untranslatedLabel": "Short badge reading 'English', marking an untranslated entry.",
+  "changelog.entryCount": "Pluralised count of changelog entries. Uses pipe-separated plural forms, ordered zero | one | many. `{count}` is the number. Supply exactly the forms your language needs, in CLDR order.",
+  "changelog.entries": "Individual changelog entries. PARTIAL BY DESIGN: a locale may translate only the most recent entries. Any entry you do include must be complete (date, version, title and every item). Entries you omit automatically fall back to English and the page shows a 'not translated' notice. `date` is a phase label such as 'Phase 4.6', not a calendar date. `version` is a lowercase descriptive tag shown in a <code> element. `items` are terse bullet points; CLI commands such as `ua client` and all cryptographic names stay untranslated.",
+
+  "notFound": "The 404 page. `code` is a short uppercase machine-style label. The copy uses a light Git metaphor ('this branch does not exist') — keep the tone playful but adapt the metaphor if it does not land in your language."
+}
