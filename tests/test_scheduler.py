@@ -132,7 +132,8 @@ async def test_expired_lease_recovers_after_restart(tmp_path: Path) -> None:
 
 
 def test_webhook_signature_idempotency_and_secret_reference(tmp_path: Path) -> None:
-    scheduler = Scheduler(tmp_path / "scheduler.db", secret_resolver=lambda _ref: "secret")
+    resolved_secret = "resolved-sensitive-value-7f19"
+    scheduler = Scheduler(tmp_path / "scheduler.db", secret_resolver=lambda _ref: resolved_secret)
     job = scheduler.create_job(
         JobSpec(
             name="webhook",
@@ -142,7 +143,7 @@ def test_webhook_signature_idempotency_and_secret_reference(tmp_path: Path) -> N
         )
     )
     body = json.dumps({"event": "push"}).encode()
-    signature = "sha256=" + hmac.new(b"secret", body, hashlib.sha256).hexdigest()
+    signature = "sha256=" + hmac.new(resolved_secret.encode(), body, hashlib.sha256).hexdigest()
 
     first = scheduler.ingest_webhook(
         job.id, body, signature=signature, idempotency_key="delivery-1"
@@ -151,7 +152,7 @@ def test_webhook_signature_idempotency_and_secret_reference(tmp_path: Path) -> N
         job.id, body, signature=signature, idempotency_key="delivery-1"
     )
     assert first.id == duplicate.id
-    assert "secret" not in (tmp_path / "scheduler.db").read_bytes().decode(errors="ignore")
+    assert resolved_secret not in (tmp_path / "scheduler.db").read_bytes().decode(errors="ignore")
 
     with pytest.raises(PermissionError, match="signature"):
         scheduler.ingest_webhook(

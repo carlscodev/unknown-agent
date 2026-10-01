@@ -90,21 +90,9 @@ class Role:
 
 _FS_READ = ("read_file", "list_files", "glob_files", "project_tree", "search_code")
 _REPO = ("inspect_project", "git_status", "git_diff", "git_log", "package_info")
-_WORKTREE_READ = ("git_worktree_list", "git_worktree_status", "git_worktree_merge_preview")
-_WORKTREE_EDIT = ("git_worktree_create", "git_worktree_commit")
-_WORKTREE_MERGE = ("git_worktree_merge", "git_worktree_remove")
 _WRITE = ("write_file", "apply_patch", "create_file", "move_path", "delete_path")
 _EXEC = ("shell_run", "syntax_check", "read_logs")
 _QUALITY = ("test_run", "lint_run", "typecheck_run", "build_run", "run_gates")
-_LSP = (
-    "lsp_status",
-    "lsp_symbols",
-    "lsp_definition",
-    "lsp_references",
-    "lsp_hover",
-    "lsp_diagnostics",
-    "lsp_rename_preview",
-)
 _BROWSER = ("browser_flow", "browser_screenshot", "browser_console")
 _MEMORY = ("memory_search", "project_note", "procedure_add")
 
@@ -122,7 +110,7 @@ _role(
     label="Planner",
     mission="Turn a request into a decision-complete plan: alternatives considered, tradeoffs scored, risks named, acceptance criteria executable.",
     outputs=("blueprint", "plan", "alternatives", "risks"),
-    tools=_FS_READ + _REPO + _WORKTREE_READ + _MEMORY + ("procedure_list",),
+    tools=_FS_READ + _REPO + _MEMORY + ("procedure_list",),
     deny_tools=_WRITE + _EXEC,
     mutates=False,
     reasoning_mode="super",
@@ -143,7 +131,7 @@ _role(
     label="Repo inspector",
     mission="Establish ground truth about the existing tree: stack, entry points, conventions, commands, risks, current gate status.",
     outputs=("repo_map", "conventions", "commands", "risks", "baseline_gates"),
-    tools=_FS_READ + _REPO + _WORKTREE_READ + _LSP + _QUALITY[:1] + ("run_gates",) + _MEMORY,
+    tools=_FS_READ + _REPO + _QUALITY[:1] + ("run_gates",) + _MEMORY,
     deny_tools=_WRITE,
     mutates=False,
     reasoning_mode="medium",
@@ -163,16 +151,7 @@ _role(
     label="Code generator",
     mission="Implement the plan's behaviour in the repository's own idiom, with tests for the paths that can break.",
     outputs=("patch", "tests", "notes"),
-    tools=(
-        _FS_READ
-        + _WRITE
-        + _EXEC
-        + ("test_run", "syntax_check")
-        + _REPO[:1]
-        + _WORKTREE_READ
-        + _WORKTREE_EDIT
-        + _LSP
-    ),
+    tools=_FS_READ + _WRITE + _EXEC + ("test_run", "syntax_check") + _REPO[:1],
     reasoning_mode="high",
     stage=2,
     owned_paths=("src/**", "app/**", "lib/**", "packages/**", "tests/**", "test/**"),
@@ -192,16 +171,7 @@ _role(
     label="Refactor agent",
     mission="Improve structure without changing behaviour, proven by a green baseline before and after.",
     outputs=("baseline", "patch", "behaviour_proof"),
-    tools=(
-        _FS_READ
-        + _WRITE
-        + _EXEC
-        + _QUALITY
-        + _REPO[:3]
-        + _WORKTREE_READ
-        + _WORKTREE_EDIT
-        + _LSP
-    ),
+    tools=_FS_READ + _WRITE + _EXEC + _QUALITY + _REPO[:3],
     reasoning_mode="high",
     stage=3,
     owned_paths=("src/**", "app/**", "lib/**", "packages/**"),
@@ -302,13 +272,7 @@ _role(
     label="Release agent",
     mission="Ship deliberately: version, changelog, artefact, dry-run, deploy, smoke-test, rollback recorded.",
     outputs=("version", "changelog", "artefact", "deploy_report", "rollback_plan"),
-    tools=(
-        _FS_READ[:1]
-        + ("write_file", "apply_patch")
-        + ("build_run", "shell_run", "git_status", "git_diff", "git_commit", "package_info")
-        + _WORKTREE_READ
-        + _WORKTREE_MERGE
-    ),
+    tools=_FS_READ[:1] + ("write_file", "apply_patch") + ("build_run", "shell_run", "git_status", "git_diff", "git_commit", "package_info"),
     reasoning_mode="high",
     stage=7,
     owned_paths=("CHANGELOG*", "pyproject.toml", "package.json", "VERSION", "*.toml"),

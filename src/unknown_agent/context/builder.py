@@ -22,7 +22,6 @@ from pathlib import Path
 from typing import Any
 
 from unknown_agent.config.models import Settings
-from unknown_agent.context.compaction import CompactionResult, CompactionStore, ContextCompactor
 from unknown_agent.context.project import ProjectContext
 from unknown_agent.context.repo_map import RepoMap, build_repo_map
 from unknown_agent.core.models import Message
@@ -119,8 +118,6 @@ class ContextBuilder:
             observation_budget=settings.agent.observation_token_budget,
         )
         self._repo_map: RepoMap | None = None
-        self._compactor: ContextCompactor | None = None
-        self.last_compaction: CompactionResult | None = None
 
     # -- components --------------------------------------------------------
     def repo_map(self, *, refresh: bool = False) -> RepoMap:
@@ -267,53 +264,24 @@ class ContextBuilder:
         ]
         return "\n".join(lines)
 
-    # -- conversation compaction ------------------------------------------
-    def _context_compactor(self) -> ContextCompactor:
-        """Create the durable compactor lazily, only when a prompt needs it."""
+    # -- conversation trimming --------------------------------------------
+    def fit_messages(self, messages: list[Message], *, budget: ContextBudget, reserved_tokens: int = 4000) -> list[Message]:
+        """Drop oldest conversation turns until the prompt fits the budget."""
 
-        if self._compactor is None:
-            store = None
-            if self.project is not None:
-                store = CompactionStore(self.project.root / ".unknown" / "context_compactions.db")
-            self._compactor = ContextCompactor(store)
-        return self._compactor
-
-    def fit_messages(
-        self,
-        messages: list[Message],
-        *,
-        budget: ContextBudget,
-        reserved_tokens: int = 4000,
-        scope: str = "",
-    ) -> list[Message]:
-        """Fit history with a durable tiered checkpoint instead of silent loss.
-
-        System messages, the originating request and the most recent causal turns
-        remain verbatim.  Older turns become a deterministic, integrity-linked
-        checkpoint that can be replayed from SQLite after a process restart.
-        """
-
-        target = max(2_000, budget.total_tokens - reserved_tokens)
-        estimated = sum(
-            estimate_tokens(message.content)
-            + sum(estimate_tokens(str(call.to_dict())) for call in message.tool_calls)
-            + 20
-            for message in messages
-        )
-        if estimated <= target:
-            fitted = list(messages)
-            self.last_compaction = None
-        else:
-            result = self._context_compactor().compact(messages, target_tokens=target, scope=scope)
-            fitted = result.messages
-            self.last_compaction = result if result.changed else None
-        budget.system_tokens = sum(
-            estimate_tokens(message.content) + 20 for message in fitted if message.role == "system"
-        )
-        budget.conversation_tokens = sum(
-            estimate_tokens(message.content) + 20 for message in fitted if message.role != "system"
-        )
-        return fitted
+        available = max(2_000, budget.total_tokens - budget.system_tokens - reserved_tokens)
+        system = [message for message in messages if message.role == "system"]
+        conversation = [message for message in messages if message.role != "system"]
+        kept: list[Message] = []
+        used = 0
+        for message in reversed(conversation):
+            cost = estimate_tokens(message.content) + 20
+            if used + cost > available and kept:
+                break
+            kept.append(message)
+            used += cost
+        kept.reverse()
+        budget.conversation_tokens = used
+        return [*system, *kept]
 
     def describe(self, built: BuiltContext) -> str:
         budget = built.budget.as_dict()

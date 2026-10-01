@@ -238,27 +238,19 @@ def _register_commands() -> None:
     """
 
     from unknown_agent.cli.commands import (
-        acp,
         agent,
-        benchmark,
         browser,
-        client_app,
         config_cmd,
         context_cmd,
         doctor,
-        gateway,
         inspect,
-        marketplace,
         mcp_cmd,
         memory_cmd,
         misc,
         orchestration,
         plugins,
         providers_cmd,
-        release_cmd,
         runs,
-        sandbox,
-        scheduler,
         service,
         sessions,
         skills,
@@ -279,7 +271,6 @@ def _register_commands() -> None:
     app.command("setup", rich_help_panel="Setup")(providers_cmd.setup)
     app.command("onboard", rich_help_panel="Setup", hidden=True)(providers_cmd.setup)
     app.command("web", rich_help_panel="Setup")(web_cmd.web_command)
-    app.command("client", rich_help_panel="Setup")(client_app.client_command)
     app.add_typer(
         web_cmd.approve_app,
         name="approve",
@@ -295,7 +286,6 @@ def _register_commands() -> None:
         rich_help_panel="Agent",
     )
     app.command("shell", rich_help_panel="Agent")(_shell_command)
-    app.command("acp", rich_help_panel="Agent")(acp.acp_command)
 
     # -- project -----------------------------------------------------------
     app.command("init", rich_help_panel="Project")(misc.init_command)
@@ -311,16 +301,11 @@ def _register_commands() -> None:
     app.command("upgrade", rich_help_panel="Project")(misc.upgrade_command)
     app.command("log", rich_help_panel="Project")(misc.log_command)
     app.add_typer(service.app, name="service", help="Optional background maintenance: systemd user units, manual runs.", rich_help_panel="Project")
-    app.add_typer(scheduler.app, name="scheduler", help="Persistent cron and webhook automation.", rich_help_panel="Project")
-    app.add_typer(sandbox.app, name="sandbox", help="Native subprocess containment profiles.", rich_help_panel="Project")
-    app.add_typer(gateway.app, name="gateway", help="Durable channel-neutral inbox and outbox.", rich_help_panel="Project")
-    app.add_typer(release_cmd.app, name="release", help="SBOM and signed provenance artifacts.", rich_help_panel="Project")
     app.command("completion", rich_help_panel="Project")(misc.completion_command)
     app.add_typer(inspect.app, name="inspect", help="Repository intelligence: stack, commands, layout, risks.", rich_help_panel="Project")
 
     # -- quality -----------------------------------------------------------
     app.command("verify", rich_help_panel="Quality")(verify.verify_command)
-    app.add_typer(benchmark.app, name="benchmark", help="Reproducible performance and reliability regression gates.", rich_help_panel="Quality")
     app.add_typer(browser.app, name="browser", help="Chromium validation: flows, screenshots, console, traces.", rich_help_panel="Quality")
     app.add_typer(vision_cmd.app, name="vision", help="Vision: capability matrix, routing status, image analysis.", rich_help_panel="Quality")
 
@@ -334,7 +319,6 @@ def _register_commands() -> None:
     app.add_typer(tools.app, name="tools", help="Tool catalog: list, describe, call directly.", rich_help_panel="Tools")
     app.add_typer(mcp_cmd.app, name="mcp", help="MCP servers: add, inspect, test, trust, expose.", rich_help_panel="Tools")
     app.add_typer(plugins.app, name="plugins", help="Install, inspect and scaffold plugins.", rich_help_panel="Tools")
-    app.add_typer(marketplace.app, name="marketplace", help="Install signed packages from a verified registry.", rich_help_panel="Tools")
     app.add_typer(skills.app, name="skills", help="Craft guidance the agent runs with: list, inspect, scaffold, audit.", rich_help_panel="Tools")
     app.add_typer(config_cmd.app, name="config", help="Inspect, validate and edit configuration.", rich_help_panel="Configuration")
 

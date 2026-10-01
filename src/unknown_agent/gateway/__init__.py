@@ -20,29 +20,6 @@ from unknown_agent.gateway.contracts import (
     OutboundDraft,
     OutboundEnvelope,
 )
-from unknown_agent.gateway.devices import (
-    Device,
-    DeviceCommand,
-    DeviceController,
-    DeviceError,
-    Enrollment,
-)
-from unknown_agent.gateway.media import (
-    MediaAsset,
-    MediaError,
-    MediaPolicy,
-    MediaStore,
-    ResolvedMedia,
-    SpeechAPIConfig,
-    SpeechAPITranscriber,
-    TranscriptionService,
-)
-from unknown_agent.gateway.mobile_adapters import (
-    MatrixAdapter,
-    MatrixConfig,
-    WhatsAppAdapter,
-    WhatsAppConfig,
-)
 from unknown_agent.gateway.service import Gateway
 
 __all__ = [
@@ -52,35 +29,18 @@ __all__ = [
     "ContentKind",
     "ContentPart",
     "DeliveryState",
-    "Device",
-    "DeviceCommand",
-    "DeviceController",
-    "DeviceError",
     "DiscordAdapter",
     "DiscordConfig",
-    "Enrollment",
     "Gateway",
     "GatewayRecord",
     "Identity",
     "InboundEnvelope",
-    "MatrixAdapter",
-    "MatrixConfig",
-    "MediaAsset",
-    "MediaError",
-    "MediaPolicy",
-    "MediaStore",
     "OutboundDraft",
     "OutboundEnvelope",
     "PairingCode",
-    "ResolvedMedia",
     "SlackAdapter",
     "SlackConfig",
-    "SpeechAPIConfig",
-    "SpeechAPITranscriber",
     "TelegramAdapter",
     "TelegramConfig",
-    "TranscriptionService",
-    "WhatsAppAdapter",
-    "WhatsAppConfig",
     "register_agent_route",
 ]

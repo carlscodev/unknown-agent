@@ -6,6 +6,15 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed — warning-free validation and current dependency APIs
+
+- Migrated ignore matching from deprecated `gitwildmatch` factories to `GitIgnoreSpec` without changing repository traversal semantics.
+- Prefer the maintained `python_multipart` import and retain the legacy import only as a compatibility fallback.
+- Added `httpx2` to development dependencies for the current Starlette/FastAPI test client.
+- Removed over-broad asyncio marks from synchronous TUI tests; pytest asyncio auto-mode continues to execute every async test.
+- Strengthened the scheduler secret-persistence assertion so it checks the resolved secret value rather than a substring also present in the reference name.
+- The complete suite now passes without warning output.
+
 ## [1.6.1] - 2026-09-21
 
 ### Added — the answer is never truncated and never only “copy-paste me”

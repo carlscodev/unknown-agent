@@ -63,25 +63,6 @@ class ToolExecutor:
     max_parallel: int = 4
     records: list[ExecutionRecord] = field(default_factory=list)
 
-    def __post_init__(self) -> None:
-        # Transaction tools need the already-configured registry and policy engine.
-        # Keeping the executor in injected context avoids globals and lets tests
-        # provide a real or protocol-compatible executor explicitly.
-        self.context.extra["tool_executor"] = self
-        mutation_db = self.context.project_root / ".unknown" / "mutations.db"
-        if mutation_db.exists():
-            from unknown_agent.tools.mutations import MutationQueue
-
-            queue = MutationQueue(mutation_db, project_root=self.context.project_root)
-            self.context.extra["mutation_queue"] = queue
-            recovered = queue.recover()
-            for transaction in recovered:
-                self.context.emit(
-                    "mutation.recovered",
-                    f"recovered {transaction.id} as {transaction.status}",
-                    transaction=transaction.model_dump(mode="json"),
-                )
-
     # -- public API --------------------------------------------------------
     async def execute_many(self, calls: list[ToolCall]) -> list[ToolResult]:
         """Run calls, preserving order, parallelising only safe read-only groups."""
@@ -171,42 +152,22 @@ class ToolExecutor:
             self._emit("tool.finished", call, result, dry_run=True)
             return result
 
-        return await self.execute_approved(call, tool, arguments, started=started)
-
-    async def execute_approved(
-        self,
-        call: ToolCall,
-        tool: Tool,
-        arguments: dict[str, Any],
-        *,
-        started: float | None = None,
-    ) -> ToolResult:
-        """Execute a call whose policy decision was already approved.
-
-        Transaction commits use this entry point after preflighting *every*
-        operation, so no side effect can occur before the complete batch has been
-        authorised and snapshotted.  Normal callers must use :meth:`execute`.
-        """
-
-        began = started or time.perf_counter()
         self._emit("tool.started", call, None, risk=tool.risk.value, category=tool.category)
-        self.context.emit(
-            "tool.requested",
-            tool.summarise_call(arguments),
-            **{"tool": tool.name, "arguments": _safe_arguments(arguments)},
-        )
-        await asyncio.sleep(0)
+        self.context.emit("tool.requested", tool.summarise_call(arguments), **{"tool": tool.name, "arguments": _safe_arguments(arguments)})
+        await asyncio.sleep(0)  # yield so UI can paint the call before a slow tool blocks
+
         try:
             result = await tool.execute(self.context, arguments)
         except asyncio.CancelledError:
             self._emit("tool.failed", call, None, reason="cancelled")
             raise
+
         result.output = _truncate(result.output, self.max_output_chars)
         result.error = _truncate(result.error or "", 2_000) or None
         self._record(call, result, tool=tool)
         self._emit("tool.finished" if result.ok else "tool.failed", call, result, risk=tool.risk.value)
-        if (time.perf_counter() - began) > 60:  # pragma: no cover - slow tool notice
-            log.info("slow tool %s took %.1fs", tool.name, time.perf_counter() - began)
+        if (time.perf_counter() - started) > 60:  # pragma: no cover - slow tool notice
+            log.info("slow tool %s took %.1fs", tool.name, time.perf_counter() - started)
         return result
 
     # -- internals ---------------------------------------------------------

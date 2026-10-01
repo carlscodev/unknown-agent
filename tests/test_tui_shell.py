@@ -11,14 +11,11 @@ import asyncio
 
 import pytest
 
-from unknown_agent.config.loader import load_settings
 from unknown_agent.providers.health import CheckStage, ProviderReport, ProviderStatus
 from unknown_agent.tui.commands import Command, CommandRegistry, fuzzy_score
 from unknown_agent.tui.provider_status import ProviderStatusController, StartupHealthResolver
 from unknown_agent.tui.shell_app import ErrorBoundary, TUIAppShell
 from unknown_agent.tui.usage import UsageTracker, estimate_tokens
-
-pytestmark = pytest.mark.asyncio
 
 
 def _plain(renderable) -> str:

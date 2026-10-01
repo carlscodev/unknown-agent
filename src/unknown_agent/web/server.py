@@ -31,16 +31,8 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import (
-    FastAPI,
-    File,
-    HTTPException,
-    Request,
-    UploadFile,
-    WebSocket,
-    WebSocketDisconnect,
-)
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
+from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
@@ -150,38 +142,6 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
     files_opts_path = paths.config_dir / "web_files.json"
     usage_path = paths.data_dir / "web_usage.json"
     uploads = AttachmentStore(paths.data_dir / "web_uploads")
-    from unknown_agent.clients import ClientError, ClientSyncService, SyncRequest
-    from unknown_agent.gateway.devices import DeviceController, DeviceError
-
-    device_controller = DeviceController(paths.project_dir / "gateway.db")
-    client_sync = ClientSyncService(paths.project_dir / "clients.db")
-
-    @app.middleware("http")
-    async def client_cors(
-        request: Request, call_next: Callable[[Request], Awaitable[Response]]
-    ) -> Response:
-        """Allow only native-shell origins; device signatures still authenticate every sync."""
-        origin = request.headers.get("origin", "")
-        local_origin = (
-            origin == "null"
-            or origin == "https://localhost"
-            or origin == "capacitor://localhost"
-            or origin.startswith("http://localhost:")
-            or origin.startswith("http://127.0.0.1:")
-        )
-        if not request.url.path.startswith("/v1/client/") or not local_origin:
-            return await call_next(request)
-        if request.method == "OPTIONS":
-            response = Response(status_code=204)
-        else:
-            response = await call_next(request)
-        response.headers["Access-Control-Allow-Origin"] = origin
-        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = (
-            "Content-Type, X-Device-Id, X-Device-Timestamp, X-Device-Nonce, X-Device-Signature"
-        )
-        response.headers["Vary"] = "Origin"
-        return response
 
     # -- helpers ------------------------------------------------------------ #
     def _settings() -> Settings:
@@ -802,46 +762,6 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         return True
 
     # -- auth endpoints ------------------------------------------------------ #
-    @app.post("/v1/client/enroll")
-    async def client_enroll(request: Request) -> dict[str, Any]:
-        body = await request.body()
-        if len(body) > 1_048_576:
-            raise HTTPException(status_code=413, detail="request too large")
-        try:
-            payload = json.loads(body)
-            device = device_controller.enroll(
-                str(payload["token"]),
-                device_id=str(payload["device_id"]),
-                name=str(payload["name"]),
-                public_key=str(payload["public_key"]),
-                capabilities=list(payload["capabilities"]),
-                signature=str(payload["signature"]),
-            )
-            return device.model_dump(mode="json")
-        except (KeyError, TypeError, ValueError, DeviceError, json.JSONDecodeError) as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    @app.post("/v1/client/sync")
-    async def client_synchronize(request: Request) -> dict[str, Any]:
-        body = await request.body()
-        if len(body) > 1_048_576:
-            raise HTTPException(status_code=413, detail="request too large")
-        try:
-            device = device_controller.verify_request(
-                request.headers["x-device-id"],
-                timestamp=int(request.headers["x-device-timestamp"]),
-                nonce=request.headers["x-device-nonce"],
-                body=body,
-                signature=request.headers["x-device-signature"],
-            )
-            sync_request = SyncRequest.model_validate_json(body)
-            response = client_sync.sync(device.id, device.capabilities, sync_request)
-            return response.model_dump(mode="json")
-        except (KeyError, ValueError, DeviceError) as exc:
-            raise HTTPException(status_code=401, detail=str(exc)) from exc
-        except ClientError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-
     @app.get("/api/health")
     async def health() -> JSONResponse:
         return JSONResponse({"ok": True, "version": __version__})
@@ -1302,8 +1222,10 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             raise HTTPException(status_code=401, detail="authentication required")
 
     try:
-        app.include_router(build_mission_router(project_root=paths.cwd, guard=_mission_guard))
-    except Exception as exc:
+        app.include_router(
+            build_mission_router(project_root=paths.cwd, guard=_mission_guard)
+        )
+    except Exception as exc:  # noqa: BLE001 - the panel must still boot without it
         log.warning("mission control endpoints unavailable: %s", exc)
 
     # -- static / SPA ----------------------------------------------------------- #

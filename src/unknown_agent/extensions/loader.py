@@ -63,12 +63,8 @@ class PluginManager:
         self.context: PluginContext | None = None
 
     # ------------------------------------------------------------------ #
-    def load(
-        self, *, registry: Any = None, settings: Any = None, hook_bus: Any = None
-    ) -> PluginContext:
+    def load(self, *, registry: Any = None, settings: Any = None) -> PluginContext:
         context = PluginContext(settings=settings, registry=registry)
-        if hook_bus is not None:
-            context.extra["hook_bus"] = hook_bus
         self.context = context
         for candidate in self.discover():
             if candidate["name"].lower() in self.disabled:

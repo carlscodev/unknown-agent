@@ -611,10 +611,9 @@ def backoff_delay(
     rand = rng or random.random
     if policy.respect_retry_after and retry_after is not None and retry_after > 0:
         capped = min(retry_after, policy.max_retry_after)
-        # Jitter is additive only: Retry-After is a server-mandated minimum, not
-        # an estimate clients may shorten. Positive spread still prevents herds.
-        spread = capped * policy.jitter
-        return max(0.05, capped + rand() * spread)
+        # Small jitter on top so a fleet of clients doesn't return in lockstep.
+        spread = capped * policy.jitter * 0.5
+        return max(0.05, capped + (rand() * 2 - 1) * spread)
 
     index = max(1, attempt) - 1
     exponential = min(policy.max_delay, policy.base_delay * (policy.factor**index))

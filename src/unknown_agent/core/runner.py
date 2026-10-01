@@ -171,10 +171,6 @@ class Runner:
         self._event_sink = event_sink
         self._apply_overrides()
         self.paths.ensure_project_dirs()
-        from unknown_agent.extensions.hooks import HookBus
-
-        self.hook_bus = HookBus(self.paths.project_dir / "hooks.db")
-        self.events.attach_hook_bus(self.hook_bus)
         self.project: ProjectContext | None = None
         self.provider = None
         self.registry: ToolRegistry | None = None
@@ -483,12 +479,8 @@ class Runner:
             user_dir=self.paths.user_plugins_dir,
             project_dir=self.paths.project_dir / "plugins",
             disabled=self.settings.plugins.disabled,
-            require_signed=self.settings.plugins.require_signed,
-            trust_store_path=self.paths.config_dir / "trusted_publishers.json",
         )
-        self.plugins = manager.load(
-            registry=self.registry, settings=self.settings, hook_bus=self.hook_bus
-        )
+        self.plugins = manager.load(registry=self.registry, settings=self.settings)
 
     # ------------------------------------------------------------------ #
     # execution
@@ -957,14 +949,8 @@ async def run_task(loaded: LoadedSettings, request: RunRequest, *, hooks: LoopHo
     """Convenience entry point used by the API and tests."""
 
     runner = Runner(loaded, request=request, hooks=hooks, event_sink=event_sink)
-    try:
-        await runner.setup()
-        return await runner.execute()
-    finally:
-        with contextlib.suppress(Exception):
-            await runner.hook_bus.drain()
-        with contextlib.suppress(Exception):
-            await runner.hook_bus.close()
+    await runner.setup()
+    return await runner.execute()
 
 
 __all__ = ["Runner", "RunRequest", "RunResult", "run_task"]

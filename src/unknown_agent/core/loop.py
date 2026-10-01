@@ -219,17 +219,7 @@ class AgentLoop:
                 ),
             ],
             budget=self.context_budget,
-            scope=state.id,
         )
-        compacted = self.builder.last_compaction
-        if compacted is not None and compacted.record is not None:
-            record_data = compacted.record.model_dump()
-            self.emit(
-                "context.compacted",
-                f"tier {compacted.record.tier}: {compacted.record.source_count} messages checkpointed",
-                **record_data,
-                dropped_messages=compacted.dropped_messages,
-            )
 
         response = await self._model_turn(messages, state)
         if response is None:

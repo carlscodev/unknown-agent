@@ -46,7 +46,6 @@ class PluginRecord:
     tools: list[str] = field(default_factory=list)
     providers: list[str] = field(default_factory=list)
     gates: list[str] = field(default_factory=list)
-    hooks: list[str] = field(default_factory=list)
     commands: list[str] = field(default_factory=list)
     fact_kinds: list[str] = field(default_factory=list)
     manifest_verified: bool = False
@@ -64,7 +63,6 @@ class PluginRecord:
             "tools": self.tools,
             "providers": self.providers,
             "gates": self.gates,
-            "hooks": self.hooks,
             "commands": self.commands,
             "fact_kinds": self.fact_kinds,
             "manifest_verified": self.manifest_verified,
@@ -91,7 +89,6 @@ class PluginContext:
     _pending_tools: list[tuple[Any, bool]] = field(default_factory=list)
     _pending_providers: list[tuple[str, Callable[..., Any], bool]] = field(default_factory=list)
     _pending_gates: list[Any] = field(default_factory=list)
-    _pending_hooks: list[tuple[Any, Any]] = field(default_factory=list)
     _pending_fact_kinds: list[str] = field(default_factory=list)
     _pending_commands: list[tuple[str, Callable[..., Any], str]] = field(default_factory=list)
 
@@ -105,7 +102,6 @@ class PluginContext:
         self._pending_tools.clear()
         self._pending_providers.clear()
         self._pending_gates.clear()
-        self._pending_hooks.clear()
         self._pending_fact_kinds.clear()
         self._pending_commands.clear()
         self.record = None
@@ -131,11 +127,6 @@ class PluginContext:
         self._authorise("gate", name, "gates.register")
         self._pending_gates.append(gate)
 
-    def add_hook(self, spec: Any, handler: Any) -> None:
-        name = getattr(spec, "name", "")
-        self._authorise("hook", name, "hooks.register")
-        self._pending_hooks.append((spec, handler))
-
     def add_fact_kind(self, kind: str) -> None:
         self._authorise("fact_kind", kind, "memory.extend")
         self._pending_fact_kinds.append(kind)
@@ -158,7 +149,6 @@ class PluginContext:
                 if existing is not None and not overwrite:
                     raise RuntimeError(f"tool {tool.name!r} is already registered")
         registered: list[tuple[str, Any | None]] = []
-        registered_hooks: list[str] = []
         try:
             for tool, overwrite in self._pending_tools:
                 previous = self.registry.maybe_get(tool.name) if self.registry is not None else None
@@ -168,22 +158,11 @@ class PluginContext:
 
             for name, factory, overwrite in self._pending_providers:
                 register_provider(name, factory, overwrite=overwrite)
-            hook_bus = self.extra.get("hook_bus")
-            if self._pending_hooks and hook_bus is None:
-                raise RuntimeError("hook bus is not available in this plugin context")
-            for spec, handler in self._pending_hooks:
-                assert hook_bus is not None
-                hook_bus.register(spec, handler)
-                registered_hooks.append(spec.name)
             self.gates.extend(self._pending_gates)
             self.fact_kinds.extend(self._pending_fact_kinds)
             for name, handler, _help_text in self._pending_commands:
                 self.commands[name] = handler
         except Exception:
-            hook_bus = self.extra.get("hook_bus")
-            if hook_bus is not None:
-                for name in reversed(registered_hooks):
-                    hook_bus.unregister(name)
             if self.registry is not None:
                 for name, previous in reversed(registered):
                     self.registry.unregister(name)
@@ -193,13 +172,11 @@ class PluginContext:
         self.record.tools.extend(name for name, _previous in registered)
         self.record.providers.extend(name for name, _factory, _overwrite in self._pending_providers)
         self.record.gates.extend(getattr(item, "name", str(item)) for item in self._pending_gates)
-        self.record.hooks.extend(spec.name for spec, _handler in self._pending_hooks)
         self.record.fact_kinds.extend(self._pending_fact_kinds)
         self.record.commands.extend(name for name, _handler, _help in self._pending_commands)
         self._pending_tools.clear()
         self._pending_providers.clear()
         self._pending_gates.clear()
-        self._pending_hooks.clear()
         self._pending_fact_kinds.clear()
         self._pending_commands.clear()
 

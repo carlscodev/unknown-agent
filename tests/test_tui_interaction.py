@@ -26,13 +26,11 @@ from unknown_agent.tui.screens import (
     CommandPalette,
     ConfirmScreen,
     HelpScreen,
-    ModeSelector,
     ModelSelector,
+    ModeSelector,
     ProviderSelector,
 )
 from unknown_agent.tui.shell_app import TUIAppShell
-
-pytestmark = pytest.mark.asyncio
 
 SIZE = (150, 44)
 
