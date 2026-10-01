@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
+import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -9,6 +11,7 @@ import httpx
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from unknown_agent.clients import (
@@ -22,6 +25,10 @@ from unknown_agent.clients import (
     SyncRequest,
     SyncResponse,
 )
+from unknown_agent.config.paths import AppPaths
+from unknown_agent.gateway import DeviceController
+from unknown_agent.web.auth import WebAuthStore
+from unknown_agent.web.server import create_app
 
 
 def keys(monkeypatch: pytest.MonkeyPatch) -> Ed25519PrivateKey:
@@ -149,6 +156,73 @@ def test_server_sync_is_durable_idempotent_and_capability_scoped(tmp_path: Path)
     assert service.approval("one")["approved"] == 1
     with pytest.raises(ClientError, match="lacks capability"):
         service.sync("device-2", (), request)
+
+
+def test_client_http_enrollment_and_signed_sync(tmp_path: Path) -> None:
+    paths = AppPaths(
+        config_dir=tmp_path / "config",
+        data_dir=tmp_path / "data",
+        state_dir=tmp_path / "state",
+        cache_dir=tmp_path / "cache",
+        cwd=tmp_path,
+    )
+    paths.ensure_user_dirs()
+    auth = WebAuthStore(paths.config_dir / "web_auth.json")
+    application = create_app(auth=auth, paths=paths)
+    controller = DeviceController(paths.project_dir / "gateway.db")
+    enrollment = controller.issue_enrollment()
+    private = Ed25519PrivateKey.generate()
+    public = (
+        private.public_key()
+        .public_bytes(serialization.Encoding.Raw, serialization.PublicFormat.Raw)
+        .hex()
+    )
+    device_id = str(uuid.uuid4())
+    capabilities = ["approval.resolve", "message.send"]
+    proof = controller.enrollment_proof(enrollment.token, device_id, public, capabilities)
+    with TestClient(application) as browser:
+        response = browser.post(
+            "/v1/client/enroll",
+            json={
+                "token": enrollment.token,
+                "device_id": device_id,
+                "name": "test client",
+                "public_key": public,
+                "capabilities": capabilities,
+                "signature": private.sign(proof).hex(),
+            },
+        )
+        assert response.status_code == 200
+        body = json.dumps({"cursor": "", "operations": []}, separators=(",", ":")).encode()
+        timestamp = int(datetime.now(UTC).timestamp())
+        nonce = "0123456789abcdef"
+        digest = hashlib.sha256(body).hexdigest()
+        request_proof = f"unknown-agent-device-request:v1:{timestamp}:{nonce}:{digest}".encode()
+        synced = browser.post(
+            "/v1/client/sync",
+            content=body,
+            headers={
+                "content-type": "application/json",
+                "x-device-id": device_id,
+                "x-device-timestamp": str(timestamp),
+                "x-device-nonce": nonce,
+                "x-device-signature": private.sign(request_proof).hex(),
+            },
+        )
+        assert synced.status_code == 200
+        assert synced.json()["cursor"] == "0"
+        replay = browser.post(
+            "/v1/client/sync",
+            content=body,
+            headers={
+                "content-type": "application/json",
+                "x-device-id": device_id,
+                "x-device-timestamp": str(timestamp),
+                "x-device-nonce": nonce,
+                "x-device-signature": private.sign(request_proof).hex(),
+            },
+        )
+        assert replay.status_code == 401
 
 
 def test_remote_approval_and_security_bounds(

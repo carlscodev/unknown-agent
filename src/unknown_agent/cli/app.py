@@ -242,6 +242,7 @@ def _register_commands() -> None:
         agent,
         benchmark,
         browser,
+        client_app,
         config_cmd,
         context_cmd,
         doctor,
@@ -278,6 +279,7 @@ def _register_commands() -> None:
     app.command("setup", rich_help_panel="Setup")(providers_cmd.setup)
     app.command("onboard", rich_help_panel="Setup", hidden=True)(providers_cmd.setup)
     app.command("web", rich_help_panel="Setup")(web_cmd.web_command)
+    app.command("client", rich_help_panel="Setup")(client_app.client_command)
     app.add_typer(
         web_cmd.approve_app,
         name="approve",

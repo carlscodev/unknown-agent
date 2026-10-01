@@ -38,6 +38,21 @@ await runtime.sync_once()
 
 The `client/` package is a responsive Vue PWA for desktop and mobile. It provides an offline inbox, message composer, approval queue, device identity screen, endpoint enrollment, install manifest, and network-first service worker fallback.
 
+The prebuilt shell ships inside the Python package and starts with:
+
+```bash
+ua client
+ua gateway device-enroll-issue
+```
+
+For a phone or remote workstation, terminate TLS in a reverse proxy or provide certificate files directly:
+
+```bash
+ua client --host 0.0.0.0 --ssl-certfile cert.pem --ssl-keyfile key.pem
+```
+
+To rebuild the source shell:
+
 ```bash
 cd client
 npm install
