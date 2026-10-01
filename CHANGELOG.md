@@ -6,6 +6,37 @@ to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — the public website speaks nine languages
+
+- **Nine fully translated locales** on the public marketing site (`website/`):
+  English (default), Español, Português (BR), Français, Deutsch, Italiano,
+  日本語, 简体中文 and العربية. A language only appears in the selector when its
+  message file is complete; there are no partially translated languages on
+  offer.
+- **One source of truth per locale.** `website/src/i18n/locales/<locale>.json`
+  holds namespaced, human-readable keys. `website/src/i18n/descriptions.json`
+  carries per-key translator context.
+- **Locale-prefixed URLs.** English stays unprefixed (`/product`) so every
+  existing URL and its SEO value are preserved; other locales are prefixed
+  (`/es/product`). Unknown paths 404 *inside* the active locale.
+- **Detection order:** explicit choice → URL prefix → saved preference →
+  `navigator.languages` → English. A prefixed deep link is never overridden by
+  a stored or browser preference.
+- **Accessible language switcher** following the ARIA collapsible-listbox
+  pattern: native language names, full keyboard navigation with type-ahead,
+  visible focus and 44 px touch targets.
+- **Per-locale SEO:** localized `<title>`, meta description, Open Graph locale
+  and alternates, canonical plus `hreflang` for all nine locales and
+  `x-default`, and localized `<html lang>` / `<html dir>`.
+- **Changelog translation strategy.** Each locale ships the five newest entries;
+  older entries fall back to English behind a visible "not translated" notice
+  rather than silently swapping language.
+- **`npm run i18n:check`** quality gate: identical key sets, no empty values,
+  placeholder parity, plural-form counts, untranslated-copy detection,
+  translator-context coverage and registry consistency. Missing keys fail CI.
+- Only the active locale's dictionary is downloaded (one lazy chunk per
+  language, roughly 10–12 kB gzip each).
+
 ### Changed — warning-free validation and current dependency APIs
 
 - Migrated ignore matching from deprecated `gitwildmatch` factories to `GitIgnoreSpec` without changing repository traversal semantics.
