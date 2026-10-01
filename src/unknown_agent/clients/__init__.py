@@ -11,6 +11,7 @@ from unknown_agent.clients.runtime import (
     SyncRequest,
     SyncResponse,
 )
+from unknown_agent.clients.server import ClientSyncService
 
 __all__ = [
     "ClientConfig",
@@ -18,6 +19,7 @@ __all__ = [
     "ClientEvent",
     "ClientOperation",
     "ClientRuntime",
+    "ClientSyncService",
     "ClientTransport",
     "SecureClientStore",
     "SyncRequest",

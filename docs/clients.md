@@ -34,4 +34,18 @@ store.resolve_approval("approval-id", approved=True, reason="Reviewed on mobile"
 await runtime.sync_once()
 ```
 
-This package is the secure shared foundation for native desktop and mobile presentation layers and can also be embedded by alternative clients.
+## Installable client shell
+
+The `client/` package is a responsive Vue PWA for desktop and mobile. It provides an offline inbox, message composer, approval queue, device identity screen, endpoint enrollment, install manifest, and network-first service worker fallback.
+
+```bash
+cd client
+npm install
+npm run build
+```
+
+The shell generates its device identity in WebCrypto. Private Ed25519 and AES-GCM keys are non-exportable before they are persisted in IndexedDB. Event and operation payloads are encrypted at rest using record-bound associated data. Use `ua gateway device-enroll-issue`, enter the HTTPS agent endpoint and one-time token in Settings, then synchronize.
+
+The FastAPI control server exposes `/v1/client/enroll` and `/v1/client/sync`. Enrollment delegates to the cryptographic device controller. Sync verifies timestamp, nonce, body digest, and Ed25519 signature before entering the durable client ledger. The server journals operations idempotently, stores approval decisions, and pages targeted or broadcast events by sequence cursor.
+
+This package can run as an installed PWA today and remains suitable for wrapping with native WebView containers and platform signing.

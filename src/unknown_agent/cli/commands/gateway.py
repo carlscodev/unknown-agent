@@ -13,6 +13,7 @@ from unknown_agent.gateway import (
     ChannelAddress,
     ContentKind,
     ContentPart,
+    DeviceController,
     Gateway,
     InboundEnvelope,
     register_agent_route,
@@ -36,6 +37,21 @@ def _access(ctx: typer.Context) -> AccessController:
 def _gateway(ctx: typer.Context) -> Gateway:
     loaded = _runtime(ctx).load()
     return Gateway(loaded.paths.project_dir / "gateway.db", access=_access(ctx))
+
+
+def _devices(ctx: typer.Context) -> DeviceController:
+    loaded = _runtime(ctx).load()
+    return DeviceController(loaded.paths.project_dir / "gateway.db")
+
+
+@app.command("device-enroll-issue")
+def device_enroll_issue(
+    ctx: typer.Context,
+    ttl: int = typer.Option(300, "--ttl", min=1, max=300),
+) -> None:
+    """Issue a one-time cryptographic device enrollment token."""
+    enrollment = _devices(ctx).issue_enrollment(ttl_seconds=ttl)
+    _runtime(ctx).emit_json(enrollment.model_dump(mode="json"))
 
 
 @app.command("pair-issue")

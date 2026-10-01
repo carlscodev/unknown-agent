@@ -31,7 +31,15 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, File, HTTPException, Request, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import (
+    FastAPI,
+    File,
+    HTTPException,
+    Request,
+    UploadFile,
+    WebSocket,
+    WebSocketDisconnect,
+)
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -142,6 +150,11 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
     files_opts_path = paths.config_dir / "web_files.json"
     usage_path = paths.data_dir / "web_usage.json"
     uploads = AttachmentStore(paths.data_dir / "web_uploads")
+    from unknown_agent.clients import ClientError, ClientSyncService, SyncRequest
+    from unknown_agent.gateway.devices import DeviceController, DeviceError
+
+    device_controller = DeviceController(paths.project_dir / "gateway.db")
+    client_sync = ClientSyncService(paths.project_dir / "clients.db")
 
     # -- helpers ------------------------------------------------------------ #
     def _settings() -> Settings:
@@ -762,6 +775,46 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
         return True
 
     # -- auth endpoints ------------------------------------------------------ #
+    @app.post("/v1/client/enroll")
+    async def client_enroll(request: Request) -> dict[str, Any]:
+        body = await request.body()
+        if len(body) > 1_048_576:
+            raise HTTPException(status_code=413, detail="request too large")
+        try:
+            payload = json.loads(body)
+            device = device_controller.enroll(
+                str(payload["token"]),
+                device_id=str(payload["device_id"]),
+                name=str(payload["name"]),
+                public_key=str(payload["public_key"]),
+                capabilities=list(payload["capabilities"]),
+                signature=str(payload["signature"]),
+            )
+            return device.model_dump(mode="json")
+        except (KeyError, TypeError, ValueError, DeviceError, json.JSONDecodeError) as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    @app.post("/v1/client/sync")
+    async def client_synchronize(request: Request) -> dict[str, Any]:
+        body = await request.body()
+        if len(body) > 1_048_576:
+            raise HTTPException(status_code=413, detail="request too large")
+        try:
+            device = device_controller.verify_request(
+                request.headers["x-device-id"],
+                timestamp=int(request.headers["x-device-timestamp"]),
+                nonce=request.headers["x-device-nonce"],
+                body=body,
+                signature=request.headers["x-device-signature"],
+            )
+            sync_request = SyncRequest.model_validate_json(body)
+            response = client_sync.sync(device.id, device.capabilities, sync_request)
+            return response.model_dump(mode="json")
+        except (KeyError, ValueError, DeviceError) as exc:
+            raise HTTPException(status_code=401, detail=str(exc)) from exc
+        except ClientError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+
     @app.get("/api/health")
     async def health() -> JSONResponse:
         return JSONResponse({"ok": True, "version": __version__})
@@ -1222,10 +1275,8 @@ def create_app(*, auth: WebAuthStore, paths: AppPaths, static_dir: Path | None =
             raise HTTPException(status_code=401, detail="authentication required")
 
     try:
-        app.include_router(
-            build_mission_router(project_root=paths.cwd, guard=_mission_guard)
-        )
-    except Exception as exc:  # noqa: BLE001 - the panel must still boot without it
+        app.include_router(build_mission_router(project_root=paths.cwd, guard=_mission_guard))
+    except Exception as exc:
         log.warning("mission control endpoints unavailable: %s", exc)
 
     # -- static / SPA ----------------------------------------------------------- #

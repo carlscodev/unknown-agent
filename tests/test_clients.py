@@ -16,8 +16,10 @@ from unknown_agent.clients import (
     ClientError,
     ClientEvent,
     ClientRuntime,
+    ClientSyncService,
     ClientTransport,
     SecureClientStore,
+    SyncRequest,
     SyncResponse,
 )
 
@@ -128,6 +130,25 @@ async def test_signed_transport_and_runtime_sync(
     assert response.cursor == "next" and local.cursor == "next" and seen == 1
     assert local.pending() == ()
     await client.aclose()
+
+
+def test_server_sync_is_durable_idempotent_and_capability_scoped(tmp_path: Path) -> None:
+    service = ClientSyncService(tmp_path / "server.db")
+    published = service.publish("approval", {"action": "deploy"}, target_device="device-1")
+    operation = {
+        "id": "approval:one",
+        "kind": "approval.resolve",
+        "payload": {"approval_id": "one", "approved": True, "reason": "reviewed"},
+        "created_at": datetime.now(UTC).isoformat(),
+    }
+    request = SyncRequest.model_validate({"cursor": "", "operations": [operation]})
+    first = service.sync("device-1", ("approval.resolve",), request)
+    second = service.sync("device-1", ("approval.resolve",), request)
+    assert first.events[0].id == published.id
+    assert first.acknowledged_operation_ids == second.acknowledged_operation_ids
+    assert service.approval("one")["approved"] == 1
+    with pytest.raises(ClientError, match="lacks capability"):
+        service.sync("device-2", (), request)
 
 
 def test_remote_approval_and_security_bounds(
