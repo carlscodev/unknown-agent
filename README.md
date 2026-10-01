@@ -330,7 +330,8 @@ from logs, events and run journals by a process-wide redactor.
 | --- | --- |
 | `docs/onboarding.md` | First-run onboarding, provider abstraction, model discovery, secrets, startup flow |
 | `docs/onboarding-preview.txt` | Captured transcript of the real onboarding screens |
-| `docs/architecture.md` | Layers, module boundaries, data flow, stability tiers |
+| `docs/architecture.md` | Coding-agent layers, module boundaries and data flow |
+| `docs/architecture-platform.md` | Durable platform layers, trust boundaries and native releases |
 | `docs/blueprint.md` | The full product blueprint and v1 scope |
 | `docs/cli.md` | Command reference, exit codes, scripting contract |
 | `docs/configuration.md` | Every setting, precedence, secrets, examples |
@@ -349,7 +350,8 @@ from logs, events and run journals by a process-wide redactor.
 | `docs/benchmarks.md` | Reproducible performance and reliability regression gates |
 | `docs/marketplace.md` | Signed registry, package verification, revocation and atomic installs |
 | `docs/clients.md` | Encrypted offline-first desktop/mobile sync and remote approvals |
-| `docs/roadmap.md` | v1 scope, phase two (TUI, dashboard, teams, cloud) |
+| `docs/native-clients.md` | Electron, Android, iOS, signing and store-ready release builds |
+| `docs/roadmap.md` | Completed four-phase platform program and continuing release policy |
 | `docs/development.md` | Local setup, tests, quality gates, release checklist |
 
 ## Development

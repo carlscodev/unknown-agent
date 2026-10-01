@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Unknown Agent</string>
+    <string name="title_activity_main">Unknown Agent</string>
+    <string name="package_name">ai.unknownagent.client</string>
+    <string name="custom_url_scheme">ai.unknownagent.client</string>
+</resources>

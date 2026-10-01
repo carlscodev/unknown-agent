@@ -1,0 +1,8 @@
+{
+  "appId": "ai.unknownagent.client",
+  "appName": "Unknown Agent",
+  "webDir": "dist",
+  "server": {"androidScheme": "https", "iosScheme": "https", "cleartext": false},
+  "android": {"allowMixedContent": false, "captureInput": true},
+  "ios": {"contentInset": "automatic", "limitsNavigationsToAppBoundDomains": false}
+}

@@ -181,6 +181,20 @@ def test_client_http_enrollment_and_signed_sync(tmp_path: Path) -> None:
     capabilities = ["approval.resolve", "message.send"]
     proof = controller.enrollment_proof(enrollment.token, device_id, public, capabilities)
     with TestClient(application) as browser:
+        preflight = browser.options(
+            "/v1/client/sync",
+            headers={
+                "origin": "https://localhost",
+                "access-control-request-method": "POST",
+            },
+        )
+        assert preflight.status_code == 204
+        assert preflight.headers["access-control-allow-origin"] == "https://localhost"
+        denied = browser.options(
+            "/v1/client/sync",
+            headers={"origin": "https://malicious.example"},
+        )
+        assert "access-control-allow-origin" not in denied.headers
         response = browser.post(
             "/v1/client/enroll",
             json={

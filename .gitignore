@@ -38,3 +38,10 @@ Thumbs.db
 # Frontend toolchain (built assets ship from src/unknown_agent/web/static)
 node_modules/
 web/frontend/dist/
+client/dist/
+client/native-dist/
+client/android/.gradle/
+client/android/local.properties
+client/android/**/build/
+client/ios/App/Pods/
+client/ios/App/DerivedData/

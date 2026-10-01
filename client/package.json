@@ -2,8 +2,71 @@
   "name": "unknown-agent-client",
   "private": true,
   "version": "1.0.0",
+  "description": "Encrypted offline desktop and mobile client for Unknown Agent",
+  "author": "Unknown Agent Contributors",
+  "license": "Apache-2.0",
+  "engines": {"node": ">=22.12.0"},
   "type": "module",
-  "scripts": {"dev": "vite --host 0.0.0.0", "build": "vite build", "preview": "vite preview --host 0.0.0.0"},
-  "dependencies": {"@vitejs/plugin-vue": "^5.2.4", "vite": "^5.4.21", "vue": "^3.5.30"},
-  "devDependencies": {}
+  "main": "electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 0.0.0.0",
+    "build": "vite build",
+    "preview": "vite preview --host 0.0.0.0",
+    "native:sync": "npm run build && cap sync",
+    "android:open": "cap open android",
+    "ios:open": "cap open ios",
+    "desktop:dir": "npm run build && electron-builder --dir",
+    "desktop:dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "@capacitor/core": "7.6.9",
+    "vue": "3.5.43"
+  },
+  "devDependencies": {
+    "@capacitor/android": "7.6.9",
+    "@capacitor/cli": "7.6.9",
+    "@capacitor/ios": "7.6.9",
+    "@vitejs/plugin-vue": "6.0.9",
+    "electron": "44.5.1",
+    "electron-builder": "26.15.3",
+    "vite": "8.3.1"
+  },
+  "build": {
+    "appId": "ai.unknownagent.client",
+    "productName": "Unknown Agent",
+    "asar": true,
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "native-dist"
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ],
+      "category": "Development"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false
+    },
+    "win": {
+      "target": [
+        "nsis",
+        "zip"
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
 }
