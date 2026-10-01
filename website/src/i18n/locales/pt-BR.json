@@ -1,0 +1,778 @@
+{
+  "meta": {
+    "titleTemplate": "{page} — Unknown Agent",
+    "siteName": "Unknown Agent",
+    "home": {
+      "title": "Vá além do prompt",
+      "description": "O Unknown Agent é o runtime soberano de engenharia com IA que planeja, constrói, verifica e entrega software em produção."
+    },
+    "product": {
+      "title": "Produto",
+      "description": "O runtime entre intenção e evidência: modelos, inteligência de código, execução isolada, memória durável e verificação em um único ciclo de engenharia."
+    },
+    "capabilities": {
+      "title": "Recursos",
+      "description": "Primitivas de runtime tipadas e sujeitas a políticas: inteligência de código, execução autônoma, controle de raciocínio, evidências, memória durável e malha de provedores."
+    },
+    "security": {
+      "title": "Segurança",
+      "description": "Política antes dos efeitos colaterais, sistema de arquivos delimitado, higiene de credenciais, contenção de processos e histórico auditável. Autonomia sem abrir mão do controle."
+    },
+    "developers": {
+      "title": "Desenvolvedores",
+      "description": "Instale o Unknown Agent com pipx ou uv, escolha seu provedor e dê a ele trabalho com uma linha de chegada objetiva."
+    },
+    "download": {
+      "title": "Download",
+      "description": "Rode o Unknown Agent na sua máquina ou infraestrutura. Sem daemon proprietário, sem workspace obrigatório na nuvem, sem enviar seu código."
+    },
+    "compare": {
+      "title": "Comparar",
+      "description": "Como o Unknown Agent se compara a agentes de código na nuvem e a arranjos de chat com ferramentas em durabilidade, verificação e independência de provedor."
+    },
+    "roadmap": {
+      "title": "Roadmap",
+      "description": "De agente de código a plataforma soberana de agentes: um programa em fases que mantém cada camada testável e pronta para produção."
+    },
+    "changelog": {
+      "title": "Novidades",
+      "description": "Um registro legível das melhorias relevantes do runtime do Unknown Agent."
+    },
+    "company": {
+      "title": "Projeto",
+      "description": "O Unknown Agent é um esforço aberto de engenharia para tornar o software autônomo durável, verificável e soberano."
+    },
+    "notFound": {
+      "title": "Página não encontrada",
+      "description": "Esta página não existe."
+    },
+    "og": {
+      "title": "Unknown Agent — Vá além do prompt",
+      "description": "Um runtime soberano de engenharia com IA para tarefas de longo prazo, com memória durável, ferramentas reais e barreiras de verificação."
+    }
+  },
+  "a11y": {
+    "skipToContent": "Pular para o conteúdo",
+    "homeLink": "Página inicial do Unknown Agent",
+    "mainNav": "Navegação principal",
+    "toggleMenu": "Abrir ou fechar o menu",
+    "github": "GitHub",
+    "footerNav": "Navegação do rodapé"
+  },
+  "nav": {
+    "product": "Produto",
+    "capabilities": "Recursos",
+    "developers": "Desenvolvedores",
+    "security": "Segurança",
+    "roadmap": "Roadmap",
+    "compare": "Comparar",
+    "download": "Download",
+    "github": "GitHub"
+  },
+  "lang": {
+    "label": "Idioma",
+    "switcherLabel": "Mudar de idioma",
+    "current": "Idioma atual: {language}",
+    "select": "Escolha um idioma"
+  },
+  "common": {
+    "learnMore": "Saiba mais",
+    "copy": "Copiar",
+    "copied": "Copiado",
+    "copyCommand": "Copiar comando",
+    "terminal": "terminal"
+  },
+  "footer": {
+    "tagline": "O runtime soberano para o software que precisa funcionar.",
+    "availability": "Versões de desenvolvimento disponíveis",
+    "columns": {
+      "product": {
+        "title": "Produto",
+        "overview": "Visão geral",
+        "capabilities": "Recursos",
+        "compare": "Comparar",
+        "download": "Download"
+      },
+      "resources": {
+        "title": "Recursos úteis",
+        "developers": "Desenvolvedores",
+        "security": "Segurança",
+        "changelog": "Novidades",
+        "roadmap": "Roadmap"
+      },
+      "project": {
+        "title": "Projeto",
+        "company": "Sobre o projeto",
+        "github": "GitHub",
+        "issues": "Issues",
+        "license": "Licença"
+      }
+    },
+    "copyright": "© {year} Unknown Agent.",
+    "built": "Desenvolvido em aberto · Licença MIT"
+  },
+  "capabilityCards": {
+    "longHorizon": {
+      "label": "Runtime de longo prazo",
+      "text": "Missões duráveis sobrevivem a reinicializações, congelam trabalho travado e retomam sem pagar duas vezes."
+    },
+    "parallelBranches": {
+      "label": "Ramificações de agente em paralelo",
+      "text": "Bifurque sessões em qualquer evento, preserve a ascendência e mescle resultados com prévias semânticas de conflito."
+    },
+    "codeIntelligence": {
+      "label": "Inteligência de código",
+      "text": "Supervisores LSP persistentes entregam definições, referências, símbolos, diagnósticos e edições precisas."
+    },
+    "policy": {
+      "label": "Política antes da ação",
+      "text": "Todo efeito colateral atravessa contratos tipados, limites de caminho, níveis de risco e verificações de permissão."
+    },
+    "verification": {
+      "label": "Barreiras de verificação",
+      "text": "Builds, testes, linters e fluxos de navegador decidem quando o trabalho terminou — não a confiança do modelo."
+    },
+    "memory": {
+      "label": "Memória com proveniência",
+      "text": "A memória de trabalho, de sessão e de projeto permanece reproduzível, atribuível e sob seu controle."
+    }
+  },
+  "phases": {
+    "p1": {
+      "status": "Concluída",
+      "title": "Núcleo de programação",
+      "text": "Runtime de missões, inteligência LSP, worktrees isolados, forks duráveis, compactação em camadas e mutações transacionais — tudo entregue."
+    },
+    "p2": {
+      "status": "Concluída",
+      "title": "Runtime extensível",
+      "text": "Capacidades assinadas, hooks duráveis, automação persistente, perfis nativos de sandbox e ACP/JSON-RPC estável já foram entregues."
+    },
+    "p3": {
+      "status": "Concluída",
+      "title": "Gateway omnicanal",
+      "text": "Mensageria durável, pareamento com ACL, cinco adaptadores de canal em produção, mídia endereçada por conteúdo, transcrição de voz e delegação de dispositivos com Ed25519 estão no ar."
+    },
+    "p4": {
+      "status": "Concluída",
+      "title": "Ecossistema de produto",
+      "text": "Clientes de desktop e mobile assinados, atestações de release, benchmarks de regressão, migrações e o marketplace verificado de extensões já foram entregues."
+    }
+  },
+  "comparison": {
+    "rows": {
+      "durableMissions": "Missões duráveis",
+      "verificationGated": "Conclusão sujeita a verificação",
+      "historicalForks": "Forks de sessões históricas",
+      "persistentLsp": "Supervisão LSP persistente",
+      "providerIndependence": "Independência de provedor",
+      "localModels": "Modelos locais ou offline",
+      "policyChecked": "Efeitos colaterais sujeitos a política",
+      "selfHosted": "Painel de controle web auto-hospedado"
+    }
+  },
+  "home": {
+    "releasePill": {
+      "badge": "NOVO",
+      "text": "O gateway durável e independente de canal já está no ar"
+    },
+    "hero": {
+      "titleLine1": "Vá além",
+      "titleLine2": "do prompt.",
+      "lead": "Um runtime soberano de engenharia com IA que planeja a fundo, age com ferramentas reais e continua trabalhando até a prova ficar verde.",
+      "ctaPrimary": "Obter o Unknown Agent",
+      "ctaSecondary": "Explorar o runtime",
+      "note1": "Sem aprisionamento à nuvem",
+      "note2": "Licença MIT",
+      "note3": "Roda onde seu código vive"
+    },
+    "terminal": {
+      "mission": "missão / portal-faturamento",
+      "live": "AO VIVO",
+      "tokens": "tokens 28,4k",
+      "elapsed": "decorrido 06:42",
+      "branch": "branch main"
+    },
+    "trust": {
+      "label": "INDEPENDENTE DE PROVEDOR",
+      "more": "+17 OUTROS"
+    },
+    "difference": {
+      "eyebrow": "A DIFERENÇA",
+      "titleLine1": "Não é um chatbot.",
+      "titleLine2": "É um sistema que conclui.",
+      "lead": "O Unknown Agent assume a distância entre um pedido e um resultado verificado."
+    },
+    "proof": {
+      "eyebrow": "VERIFICAÇÃO, NÃO INTUIÇÃO",
+      "titleLine1": "O modelo propõe.",
+      "titleLine2": "O runtime comprova.",
+      "lead": "Toda missão termina em barreiras objetivas: testes, builds, lint, diagnósticos e fluxos reais de navegador. Evidência reprovada devolve o agente ao ciclo.",
+      "item1": "Planos cientes do repositório com definições de pronto explícitas",
+      "item2": "Worktrees Git isolados para execução paralela segura",
+      "item3": "Novas tentativas cientes de falha que congelam ciclos improdutivos",
+      "item4": "Evidências reproduzíveis e proveniência completa dos eventos",
+      "loop": {
+        "ship": "ENTREGAR",
+        "shipNote": "só quando está verde",
+        "plan": "PLANEJAR",
+        "act": "AGIR",
+        "observe": "OBSERVAR",
+        "verify": "VERIFICAR"
+      }
+    },
+    "surfaces": {
+      "eyebrow": "UM RUNTIME, TODAS AS SUPERFÍCIES",
+      "titleLine1": "Comece no terminal.",
+      "titleLine2": "Continue de onde quiser.",
+      "lead": "CLI, interface de terminal, painel de controle no navegador e API compartilham as mesmas políticas, ferramentas, sessões e estado durável.",
+      "cliLabel": "CLI / TUI",
+      "codeLabel": "~/seu-projeto",
+      "metricTools": "ferramentas nativas",
+      "metricProviders": "provedores",
+      "metricTests": "testes passando",
+      "sideEyebrow": "PAINEL DE CONTROLE WEB",
+      "sideTitle": "Seus agentes, ao vivo.",
+      "sideText": "Acompanhe o raciocínio em streaming, inspecione chamadas, visualize artefatos e aprove dispositivos em um console seguro no navegador.",
+      "sideLink": "Ver todas as superfícies"
+    },
+    "roadmap": {
+      "eyebrow": "O CAMINHO À FRENTE",
+      "title": "Uma plataforma de agentes completa.",
+      "link": "Roadmap completo"
+    },
+    "cta": {
+      "eyebrow": "SEU CÓDIGO. SEUS MODELOS. SEU AGENTE.",
+      "titleLine1": "Entregue o trabalho a algo",
+      "titleLine2": "capaz de terminá-lo.",
+      "installLabel": "instalação",
+      "primary": "Comece a construir",
+      "secondary": "Ver no GitHub"
+    }
+  },
+  "product": {
+    "hero": {
+      "eyebrow": "PRODUTO",
+      "title": "O runtime entre intenção e evidência.",
+      "lead": "O Unknown Agent coordena modelos, inteligência de código, execução isolada, memória durável e verificação em um único ciclo de engenharia coerente.",
+      "ctaPrimary": "Instalar o runtime",
+      "ctaSecondary": "Ler o guia do desenvolvedor"
+    },
+    "loop": {
+      "eyebrow": "CICLO DA MISSÃO"
+    },
+    "stages": {
+      "understand": {
+        "step": "01",
+        "title": "Entender",
+        "text": "Mapeia o repositório, a stack, as convenções, os comandos, os riscos e a memória de projeto relevante antes de tocar no código."
+      },
+      "plan": {
+        "step": "02",
+        "title": "Planejar",
+        "text": "Transforma a intenção em trabalho tipado e revisável, com dependências, critérios de aceitação e barreiras de verificação."
+      },
+      "execute": {
+        "step": "03",
+        "title": "Executar",
+        "text": "Executa ferramentas atrás de verificações de política dentro de árvores de trabalho da própria missão. Toda mutação é atribuível."
+      },
+      "verify": {
+        "step": "04",
+        "title": "Verificar",
+        "text": "Compila, testa, analisa e dirige o Chromium. Quem decide é a evidência, não a confiança do modelo."
+      },
+      "recover": {
+        "step": "05",
+        "title": "Recuperar",
+        "text": "Classifica falhas, replaneja alternativas e congela laços após repetidos avanços nulos."
+      }
+    },
+    "sovereign": {
+      "eyebrow": "SOBERANO POR DESIGN",
+      "title": "Sua infraestrutura é a fronteira do produto.",
+      "lead": "Rode local, escolha qualquer modelo compatível e mantenha código e telemetria sob os seus próprios controles. O Unknown Agent é arquitetura — não um trabalhador alugado escondido atrás de uma API.",
+      "portableTitle": "Portável entre provedores",
+      "portableText": "Direcione cada fase ao modelo certo.",
+      "localTitle": "Local em primeiro lugar",
+      "localText": "Ollama e operação offline são cidadãos de primeira classe.",
+      "policyTitle": "Política garantida",
+      "policyText": "Ferramentas não conseguem pular a camada de permissão.",
+      "openTitle": "Código aberto",
+      "openText": "Inspecione o runtime sob a licença MIT."
+    },
+    "shared": {
+      "eyebrow": "ESTADO COMPARTILHADO",
+      "title": "Um agente. Quatro portas de entrada."
+    },
+    "surfaces": {
+      "terminal": {
+        "title": "Terminal",
+        "text": "Uma TUI rápida e adaptável com streaming, troca de modelo, paleta de comandos e saída limpa para pipes."
+      },
+      "web": {
+        "title": "Console web",
+        "text": "Um painel de controle auto-hospedado com inspeção de ferramentas ao vivo, prévia de artefatos e pareamento de dispositivos."
+      },
+      "pythonApi": {
+        "title": "API Python",
+        "text": "Primitivas tipadas para embutir o runtime, o motor de missões, os provedores e a camada de política."
+      },
+      "events": {
+        "title": "Fluxo de eventos",
+        "text": "Eventos de missão duráveis para observabilidade, retomada, automação externa e auditoria."
+      }
+    },
+    "cta": {
+      "title": "Veja o que o runtime consegue fazer.",
+      "button": "Explorar recursos"
+    }
+  },
+  "capabilities": {
+    "hero": {
+      "eyebrow": "RECURSOS",
+      "title": "Um cinto de ferramentas sério para trabalho sério.",
+      "lead": "Cada recurso é construído como uma primitiva tipada e ciente de políticas, que pode ser testada, observada, cancelada e composta."
+    },
+    "stack": {
+      "eyebrow": "PILHA COMPLETA",
+      "title": "Profundidade em cada camada.",
+      "lead": "Não é uma lista de prompts. É um conjunto de sistemas de runtime interoperáveis."
+    },
+    "groups": {
+      "codeIntelligence": {
+        "name": "Inteligência de código",
+        "i1": "Supervisores LSP persistentes e multilinguagem",
+        "i2": "Definições, referências e símbolos do workspace",
+        "i3": "Diagnósticos com recuperação após reinicialização",
+        "i4": "Busca ciente da AST e edições estruturadas"
+      },
+      "autonomousExecution": {
+        "name": "Execução autônoma",
+        "i1": "DAGs de missão duráveis",
+        "i2": "Subagentes especializados por papel",
+        "i3": "Worktrees Git pertencentes à missão",
+        "i4": "Cancelamento por grupos de processos"
+      },
+      "reasoningControl": {
+        "name": "Controle de raciocínio",
+        "i1": "Orçamentos de raciocínio dinâmicos por fase",
+        "i2": "Cache de prompts nativo do provedor",
+        "i3": "Decisões tipadas com Pydantic v2",
+        "i4": "Detecção de travamento e replanejamento forçado"
+      },
+      "evidenceSafety": {
+        "name": "Evidência e segurança",
+        "i1": "Barreiras de build, teste e lint",
+        "i2": "Verificação com Chromium headless",
+        "i3": "Política de caminhos com negação por padrão",
+        "i4": "Telemetria de eventos somente de anexação"
+      },
+      "durableMemory": {
+        "name": "Memória durável",
+        "i1": "Camadas de trabalho, sessão e projeto",
+        "i2": "Forks de sessão baseados em eventos",
+        "i3": "Verificações de integridade por cadeia de hashes",
+        "i4": "Prévias semânticas de conflitos de merge"
+      },
+      "providerFabric": {
+        "name": "Malha de provedores",
+        "i1": "21 adaptadores de provedor",
+        "i2": "APIs nativas da OpenAI e da Anthropic",
+        "i3": "OpenRouter e gateways compatíveis",
+        "i4": "Ollama e alternativa offline"
+      }
+    },
+    "cta": {
+      "title": "Coloque o runtime completo na sua máquina.",
+      "button": "Baixar o Unknown Agent"
+    }
+  },
+  "security": {
+    "hero": {
+      "eyebrow": "SEGURANÇA",
+      "title": "Autonomia sem abrir mão do controle.",
+      "lead": "A autonomia encarece fronteiras frágeis. O Unknown Agent trata política, proveniência e cancelamento como fundamentos do runtime — não como invólucros opcionais.",
+      "badgeTitle": "Modelo de segurança aberto",
+      "badgeText": "Código inspecionável · Licença MIT · painel de controle auto-hospedado"
+    },
+    "controls": {
+      "policy": {
+        "title": "Política antes dos efeitos colaterais",
+        "text": "Cada ferramenta declara seu risco e atravessa uma decisão de política centralizada antes de alterar arquivos, iniciar processos ou acessar a rede."
+      },
+      "filesystem": {
+        "title": "Sistema de arquivos delimitado",
+        "text": "A validação canônica de caminhos e as regras de negação mantêm as alterações dentro das raízes explicitamente permitidas."
+      },
+      "secrets": {
+        "title": "Higiene de credenciais",
+        "text": "Referências a credenciais ficam guardadas à parte com permissões restritivas; logs e telas ocultam valores sensíveis."
+      },
+      "process": {
+        "title": "Contenção de processos",
+        "text": "Execução sem shell por padrão, tempos limite e cancelamento por grupo de processos evitam cargas de trabalho órfãs."
+      },
+      "audit": {
+        "title": "Histórico auditável",
+        "text": "Eventos de missão e de sessão preservam identidade, causalidade, entradas, saídas e vínculos criptográficos de integridade."
+      },
+      "access": {
+        "title": "Acesso controlado",
+        "text": "O painel de controle web usa tokens bearer rotativos, sessões cientes de papel e pareamento explícito de dispositivos com código de seis dígitos."
+      },
+      "extensions": {
+        "title": "Extensões assinadas",
+        "text": "Manifestos Ed25519 vinculam confiança no publicador, hashes exatos do código, compatibilidade com o runtime, permissões e capacidades declaradas antes da importação do código."
+      },
+      "hooks": {
+        "title": "Hooks contidos",
+        "text": "Hooks do runtime recebem eventos sanitizados através de limites de timeout, retentativa, disjuntor e fila de mensagens mortas; uma saída malformada não consegue interromper uma missão."
+      },
+      "automation": {
+        "title": "Automação assinada",
+        "text": "Segredos de webhook permanecem como referências; verificação HMAC em tempo constante, chaves de idempotência, leases com expiração, retentativas limitadas e registros de auditoria encadeados por hash contêm o agendamento autônomo."
+      },
+      "sandbox": {
+        "title": "Contenção nativa",
+        "text": "Os perfis de workspace e isolado usam fronteiras nativas da plataforma para processos, montagens e rede; o modo obrigatório falha fechado quando seu backend está indisponível."
+      },
+      "acp": {
+        "title": "ACP delimitado",
+        "text": "Sessões ACP usam esquemas JSON-RPC estritos, diretórios de trabalho restritos ao projeto, metadados privados atômicos, cancelamento concorrente e um teto de cinco minutos por requisição."
+      },
+      "messaging": {
+        "title": "Mensageria contida",
+        "text": "Entregas recebidas são deduplicadas e sanitizadas antes de serem persistidas; verificações de integridade, leases, retentativas limitadas e uma caixa de saída transacional contêm falhas de canal."
+      }
+    },
+    "threat": {
+      "eyebrow": "MODELO DE AMEAÇAS",
+      "title": "Presuma que a saída pode estar errada.",
+      "lead": "Texto do modelo, argumentos de ferramentas, páginas externas e saída de subprocessos não são confiáveis. Validação tipada e fronteiras de permissão contêm saídas malformadas ou adversárias antes que virem efeito colateral.",
+      "flow1": "Intenção não confiável",
+      "flow2": "Validação de esquema",
+      "flow3": "Decisão de política",
+      "flow4": "Execução delimitada",
+      "flow5": "Evidência registrada"
+    },
+    "reporting": {
+      "eyebrow": "COMUNICAÇÃO",
+      "title": "Encontrou uma vulnerabilidade?",
+      "lead": "Use o relato privado de vulnerabilidades em vez de abrir uma issue pública. Inclua os passos para reproduzir, as versões afetadas e o impacto potencial.",
+      "button": "Relatar em privado",
+      "cardLabel": "SECURITY.md",
+      "cardText": "Nosso processo de divulgação, as versões suportadas e as expectativas de resposta ficam junto do código.",
+      "cardLink": "Ler a política de segurança →"
+    }
+  },
+  "developers": {
+    "hero": {
+      "eyebrow": "DESENVOLVEDORES",
+      "title": "Do zero ao verificado em três comandos.",
+      "lead": "Instale como uma aplicação Python isolada, escolha seu provedor e dê a ele trabalho com uma linha de chegada objetiva."
+    },
+    "tabs": {
+      "quick": "Início rápido",
+      "verify": "Planejar e verificar",
+      "web": "Painel de controle"
+    },
+    "install": {
+      "eyebrow": "INSTALAÇÃO",
+      "titleLine1": "Python em primeiro lugar.",
+      "titleLine2": "Agnóstico de projeto.",
+      "lead": "Use pipx ou uv para uma instalação isolada. O Unknown Agent então descobre o toolchain real de cada repositório em vez de impor um.",
+      "recommended": "recomendado",
+      "fastPath": "caminho rápido"
+    },
+    "reference": {
+      "eyebrow": "REFERÊNCIA",
+      "title": "Construa sobre o runtime.",
+      "config": {
+        "title": "Configuração",
+        "text": "Provedores, perfis, políticas e ajustes locais do projeto."
+      },
+      "toolApi": {
+        "title": "API de ferramentas",
+        "text": "Contratos de ferramentas tipados, contexto, níveis de risco e resultados."
+      },
+      "missionEngine": {
+        "title": "Motor de missões",
+        "text": "Planos duráveis, subtarefas, retentativas, eventos e retomada."
+      },
+      "webApi": {
+        "title": "API web",
+        "text": "Endpoints FastAPI, eventos por WebSocket e sessões de dispositivo."
+      },
+      "plugins": {
+        "title": "Plugins",
+        "text": "Empacote e registre extensões sem aplicar patch no núcleo."
+      },
+      "contributing": {
+        "title": "Contribuir",
+        "text": "Ambiente de desenvolvimento, testes, estilo e pull requests."
+      }
+    },
+    "cta": {
+      "title": "Prefere inspecionar antes?",
+      "button": "Navegar pelo código"
+    }
+  },
+  "download": {
+    "hero": {
+      "eyebrow": "DOWNLOAD",
+      "title": "Coloque o agente onde está o código.",
+      "lead": "O Unknown Agent roda na sua máquina ou na sua infraestrutura. Sem daemon proprietário, sem workspace obrigatório na nuvem e sem enviar seu código.",
+      "ctaPrimary": "Versão mais recente",
+      "ctaSecondary": "Código-fonte"
+    },
+    "pipx": {
+      "recommended": "RECOMENDADO",
+      "title": "Instalar com pipx",
+      "textBefore": "Mantém o Unknown Agent e suas dependências isolados do Python do sistema e ao mesmo tempo expõe",
+      "textAfter": "globalmente.",
+      "thenRun": "Depois execute",
+      "setupLabel": "configuração guiada",
+      "setupText": "O painel de configuração valida seu provedor, busca os modelos disponíveis, guarda as credenciais com segurança e faz uma verificação final de conexão."
+    },
+    "platforms": {
+      "eyebrow": "PLATAFORMAS",
+      "title": "Seu sistema. Sua escolha.",
+      "linux": {
+        "name": "Linux",
+        "status": "Plataforma principal",
+        "text": "pipx, uv ou venv gerenciado"
+      },
+      "macos": {
+        "name": "macOS",
+        "status": "Totalmente suportado",
+        "text": "pipx, uv ou venv padrão"
+      },
+      "windows": {
+        "name": "Windows",
+        "status": "Pronto para PowerShell",
+        "text": "pipx pelo launcher py"
+      },
+      "req1": "Requer Python 3.11+",
+      "req2": "Git 2.30+",
+      "req3": "Opcional: Node.js, Chromium, Docker"
+    },
+    "installer": {
+      "eyebrow": "INSTALADOR SEGURO",
+      "title": "Prefere uma instalação guiada pelo shell?",
+      "lead": "Baixe, inspecione e só então execute o instalador do repositório. Ele nunca usa sudo, nunca escreve fora do seu diretório pessoal e permite remoção limpa.",
+      "label": "baixe primeiro"
+    },
+    "client": {
+      "eyebrow": "DESKTOP + MOBILE",
+      "title": "Instale o cliente seguro.",
+      "lead": "Use já o PWA criptografado incluído, ou baixe os pacotes assinados de Electron, Android e iOS em Releases. As builds nativas compartilham o mesmo runtime offline auditado e o mesmo protocolo de registro assinado.",
+      "button": "Versões nativas",
+      "label": "cliente incluído"
+    },
+    "cta": {
+      "title": "Precisa de ajuda para escolher um provedor?",
+      "button": "Abrir o início rápido"
+    }
+  },
+  "compare": {
+    "hero": {
+      "eyebrow": "COMPARAR",
+      "title": "Escolha um runtime, não mais uma janela de chat.",
+      "lead": "O Unknown Agent foi projetado em torno de execução durável e evidência. A distinção pesa mais à medida que as tarefas ficam mais longas, mais arriscadas e mais paralelas."
+    },
+    "table": {
+      "capability": "Recurso",
+      "unknownAgent": "Unknown Agent",
+      "cloudAgent": "Agente de código na nuvem",
+      "chatTools": "Chat + ferramentas",
+      "included": "Incluído",
+      "limited": "Limitado",
+      "note": "Comparação por categoria com base nos recursos de produto normalmente divulgados. Os recursos de cada fornecedor mudam; avalie segundo os seus próprios requisitos."
+    },
+    "scenarios": {
+      "eyebrow": "QUANDO FAZ SENTIDO",
+      "title": "Feito para trabalho que não pode parar em “parece certo”.",
+      "migrations": {
+        "title": "Migrações longas",
+        "text": "Pontos de verificação duráveis e missões retomáveis tornam viáveis mudanças de repositório de várias horas."
+      },
+      "regulated": {
+        "title": "Código regulado",
+        "text": "Execução local, barreiras de política e proveniência reproduzível mantêm os operadores no controle."
+      },
+      "parallel": {
+        "title": "Entrega em paralelo",
+        "text": "Worktrees pertencentes à missão isolam os agentes e as prévias semânticas tornam os merges legíveis."
+      }
+    },
+    "cta": {
+      "title": "Teste a diferença no seu próprio código.",
+      "button": "Instalar o Unknown Agent"
+    }
+  },
+  "roadmap": {
+    "hero": {
+      "eyebrow": "ROADMAP",
+      "title": "De agente de código a plataforma soberana de agentes.",
+      "lead": "Um programa em fases mantém cada camada útil, testável e pronta para produção antes que a próxima se apoie nela."
+    },
+    "map": {
+      "eyebrow": "MAPA DE ENTREGA",
+      "title": "O que cada horizonte contém."
+    },
+    "detail": {
+      "foundation": {
+        "title": "Fundação entregue",
+        "i1": "Protocolo de raciocínio tipado",
+        "i2": "Motor de missões durável",
+        "i3": "Inteligência de AST e de repositório",
+        "i4": "Roteamento de provedores e cache de prompts",
+        "i5": "Painel de controle web e fluxo de eventos"
+      },
+      "codingCore": {
+        "title": "Núcleo de programação entregue",
+        "i1": "Ferramentas LSP persistentes",
+        "i2": "Worktrees Git ligados à missão",
+        "i3": "Forks de sessão baseados em eventos",
+        "i4": "Compactação de contexto em camadas",
+        "i5": "Filas de mutação transacionais"
+      },
+      "extensible": {
+        "title": "Runtime extensível — entregue",
+        "i1": "Manifestos de capacidade assinados",
+        "i2": "Barramento de hooks e eventos",
+        "i3": "Agendador cron persistente com webhooks assinados",
+        "i4": "Perfis nativos de sandbox multiplataforma",
+        "i5": "Serviço estável JSON-RPC / ACP v1"
+      },
+      "omnichannel": {
+        "title": "Omnicanal e ecossistema — concluído",
+        "i1": "Gateway durável independente de canal — entregue",
+        "i2": "Cinco adaptadores de mensageria, mídia, voz e delegação — entregues",
+        "i3": "Cadeia de suprimentos, benchmarks e marketplace — entregues",
+        "i4": "PWA criptografado de desktop e mobile — entregue",
+        "i5": "Pipelines de release assinados para Electron, Android e iOS — entregues"
+      }
+    },
+    "principle": {
+      "eyebrow": "PRINCÍPIO OPERACIONAL",
+      "title": "Nada de marcas de concluído simuladas.",
+      "lead": "Um item do roadmap só é entregue com contratos tipados, permissões antes dos efeitos colaterais, estado durável, cancelamento real, telemetria, contenção de saídas malformadas e testes específicos dos caminhos de falha.",
+      "button": "Acompanhar o desenvolvimento"
+    }
+  },
+  "company": {
+    "hero": {
+      "eyebrow": "SOBRE",
+      "title": "Agentes de software deveriam ser sistemas que prestam contas.",
+      "lead": "O Unknown Agent é um esforço aberto de engenharia para tornar o software autônomo durável, verificável e soberano."
+    },
+    "mission": {
+      "eyebrow": "A MISSÃO",
+      "title": "Transformar a inteligência dos modelos em execução confiável.",
+      "lead": "Os modelos estão melhorando rápido. Os sistemas ao redor deles ainda perdem estado, repetem trabalho caro, ultrapassam fronteiras e cantam vitória cedo demais. O Unknown Agent constrói a camada de runtime que fecha essa lacuna."
+    },
+    "principles": {
+      "eyebrow": "PRINCÍPIOS",
+      "title": "O que otimizamos.",
+      "proof": {
+        "title": "Prova acima de aparência",
+        "text": "Uma resposta convincente não é a mesma coisa que software funcionando. Otimizamos para evidência objetiva."
+      },
+      "sovereignty": {
+        "title": "Soberania acima de conveniência",
+        "text": "Seu código, seus modelos, suas credenciais e seu ambiente de execução devem continuar sob o seu controle."
+      },
+      "systems": {
+        "title": "Sistemas acima de demos",
+        "text": "Durabilidade, cancelamento, rollback e tratamento de saídas malformadas importam a partir do quinto minuto."
+      },
+      "open": {
+        "title": "Aberto acima de opaco",
+        "text": "O runtime é inspecionável, extensível e licenciado sob MIT. A confiança pode ser verificada."
+      }
+    },
+    "build": {
+      "eyebrow": "CONSTRUA COM A GENTE",
+      "title": "Um runtime aberto melhora em aberto.",
+      "lead": "Revise a arquitetura, relate problemas, melhore um adaptador, adicione um teste específico ou proponha um recurso.",
+      "primary": "Abrir o GitHub",
+      "secondary": "Guia de contribuição"
+    }
+  },
+  "changelog": {
+    "hero": {
+      "eyebrow": "NOVIDADES",
+      "title": "O que mudou e por que isso importa.",
+      "lead": "Um registro legível das melhorias relevantes do runtime. O histórico em nível de commit continua disponível no repositório."
+    },
+    "historyLink": "Ver o histórico completo de commits →",
+    "untranslatedNotice": "Esta entrada ainda não foi traduzida para {language} e está sendo exibida em inglês.",
+    "untranslatedLabel": "Inglês",
+    "entryCount": "Nenhuma entrada | {count} entrada | {count} entradas",
+    "entries": {
+      "hardening": {
+        "date": "Atual",
+        "version": "endurecimento da plataforma",
+        "title": "Base de validação sem avisos",
+        "items": [
+          "Correspondência de pathspec obsoleta migrada para GitIgnoreSpec",
+          "Integrações mantidas de multipart e do cliente de teste HTTP",
+          "Asserção de regressão precisa sobre a persistência de credenciais",
+          "937 testes passando sem nenhum aviso na saída"
+        ]
+      },
+      "nativeEcosystem": {
+        "date": "Fase 4 concluída",
+        "version": "ecossistema nativo",
+        "title": "Ecossistema de produto nativo e assinado",
+        "items": [
+          "Pacotes Electron para Linux, macOS e Windows",
+          "Projetos Capacitor para Android e iOS com assinatura para as lojas",
+          "Builds de CI multiplataforma e credenciais de release que falham fechadas",
+          "Checksums nativos, SBOM em SPDX e proveniência SLSA assinada"
+        ]
+      },
+      "packagedClient": {
+        "date": "Fase 4.6",
+        "version": "cliente empacotado",
+        "title": "Distribuição do cliente empacotado",
+        "items": [
+          "ua client serve o PWA de produção incluído e a API de sincronização",
+          "Suporte direto a certificados TLS para acesso remoto e mobile",
+          "Testes ponta a ponta de registro assinado, sincronização e rejeição de repetição",
+          "Recursos pré-compilados incluídos nas releases do pacote Python"
+        ]
+      },
+      "installableClient": {
+        "date": "Fase 4.5",
+        "version": "cliente instalável",
+        "title": "PWA instalável para desktop e mobile",
+        "items": [
+          "Interface responsiva de caixa de entrada, mensageria e aprovações offline",
+          "Identidade WebCrypto não exportável e estado criptografado em IndexedDB",
+          "Registro de dispositivos assinado e endpoints duráveis da API de sincronização",
+          "Manifesto de instalação e shell offline com service worker"
+        ]
+      },
+      "clientRuntime": {
+        "date": "Fase 4.4",
+        "version": "runtime do cliente",
+        "title": "Runtime seguro de cliente para desktop e mobile",
+        "items": [
+          "Estado offline criptografado com ChaCha20-Poly1305",
+          "Fila de operações idempotente e sincronização atômica de cursor",
+          "Transporte HTTPS assinado por dispositivo com Ed25519 e retentativas limitadas",
+          "Aprovações remotas duráveis e histórico de eventos autenticado"
+        ]
+      }
+    }
+  },
+  "notFound": {
+    "code": "404 / ROTA DESCONHECIDA",
+    "title": "Esta branch não existe.",
+    "text": "A página pode ter mudado de lugar, ou a missão pegou o caminho errado.",
+    "button": "Voltar ao início"
+  }
+}

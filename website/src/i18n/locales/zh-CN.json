@@ -1,0 +1,778 @@
+{
+  "meta": {
+    "titleTemplate": "{page} — Unknown Agent",
+    "siteName": "Unknown Agent",
+    "home": {
+      "title": "超越提示词",
+      "description": "Unknown Agent 是一个自主可控的 AI 工程运行时，负责规划、构建、验证并交付生产级软件。"
+    },
+    "product": {
+      "title": "产品",
+      "description": "连接意图与证据的运行时：模型、代码智能、隔离执行、持久记忆与验证，统一在同一个工程闭环中。"
+    },
+    "capabilities": {
+      "title": "能力",
+      "description": "带类型、受策略约束的运行时基础单元：代码智能、自主执行、推理控制、证据、持久记忆与模型供应商矩阵。"
+    },
+    "security": {
+      "title": "安全",
+      "description": "先策略后副作用、受限文件系统、凭据卫生、进程隔离与可审计历史。拥有自主性，不交出控制权。"
+    },
+    "developers": {
+      "title": "开发者",
+      "description": "用 pipx 或 uv 安装 Unknown Agent，选择你的模型供应商，并以客观的完成标准交付任务。"
+    },
+    "download": {
+      "title": "下载",
+      "description": "Unknown Agent 运行在你自己的机器或基础设施上。没有专有守护进程，没有强制的云端工作区，不上传源代码。"
+    },
+    "compare": {
+      "title": "对比",
+      "description": "在持久性、验证能力与供应商独立性方面，Unknown Agent 与云端编码智能体、聊天加工具方案的对比。"
+    },
+    "roadmap": {
+      "title": "路线图",
+      "description": "从编码智能体走向自主可控的智能体平台：分阶段推进，确保每一层都可测试、可投产。"
+    },
+    "changelog": {
+      "title": "更新日志",
+      "description": "以可读方式记录 Unknown Agent 运行时的重要改进。"
+    },
+    "company": {
+      "title": "项目",
+      "description": "Unknown Agent 是一项开放的工程实践，致力于让自主软件变得持久、可验证且自主可控。"
+    },
+    "notFound": {
+      "title": "页面未找到",
+      "description": "此页面不存在。"
+    },
+    "og": {
+      "title": "Unknown Agent — 超越提示词",
+      "description": "面向长周期任务的自主可控 AI 工程运行时，具备持久记忆、真实工具与验证关卡。"
+    }
+  },
+  "a11y": {
+    "skipToContent": "跳到主要内容",
+    "homeLink": "Unknown Agent 首页",
+    "mainNav": "主导航",
+    "toggleMenu": "展开或收起菜单",
+    "github": "GitHub",
+    "footerNav": "页脚导航"
+  },
+  "nav": {
+    "product": "产品",
+    "capabilities": "能力",
+    "developers": "开发者",
+    "security": "安全",
+    "roadmap": "路线图",
+    "compare": "对比",
+    "download": "下载",
+    "github": "GitHub"
+  },
+  "lang": {
+    "label": "语言",
+    "switcherLabel": "切换语言",
+    "current": "当前语言：{language}",
+    "select": "请选择语言"
+  },
+  "common": {
+    "learnMore": "了解更多",
+    "copy": "复制",
+    "copied": "已复制",
+    "copyCommand": "复制命令",
+    "terminal": "终端"
+  },
+  "footer": {
+    "tagline": "为那些必须跑得起来的软件而生的自主运行时。",
+    "availability": "开发版本已提供",
+    "columns": {
+      "product": {
+        "title": "产品",
+        "overview": "概览",
+        "capabilities": "能力",
+        "compare": "对比",
+        "download": "下载"
+      },
+      "resources": {
+        "title": "资源",
+        "developers": "开发者",
+        "security": "安全",
+        "changelog": "更新日志",
+        "roadmap": "路线图"
+      },
+      "project": {
+        "title": "项目",
+        "company": "关于项目",
+        "github": "GitHub",
+        "issues": "问题反馈",
+        "license": "许可证"
+      }
+    },
+    "copyright": "© {year} Unknown Agent.",
+    "built": "开放开发 · MIT 许可证"
+  },
+  "capabilityCards": {
+    "longHorizon": {
+      "label": "长周期运行时",
+      "text": "持久任务能挺过重启，冻结停滞的工作，并在恢复时不必重复付出代价。"
+    },
+    "parallelBranches": {
+      "label": "并行智能体分支",
+      "text": "可在任意事件处分叉会话，保留血缘关系，并通过语义冲突预览合并结果。"
+    },
+    "codeIntelligence": {
+      "label": "代码智能",
+      "text": "常驻的 LSP 监督进程提供定义、引用、符号、诊断与精确编辑。"
+    },
+    "policy": {
+      "label": "先策略，后行动",
+      "text": "每一次副作用都要经过类型化契约、路径边界、风险等级与权限检查。"
+    },
+    "verification": {
+      "label": "验证关卡",
+      "text": "由构建、测试、代码检查和浏览器流程来判定工作是否完成，而不是模型的自信程度。"
+    },
+    "memory": {
+      "label": "带来源的记忆",
+      "text": "工作记忆、会话记忆与项目记忆始终可回放、可溯源，并由你掌控。"
+    }
+  },
+  "phases": {
+    "p1": {
+      "status": "已完成",
+      "title": "编码内核",
+      "text": "任务运行时、LSP 智能、隔离工作树、持久分叉、分层压缩与事务化变更——全部交付。"
+    },
+    "p2": {
+      "status": "已完成",
+      "title": "可扩展运行时",
+      "text": "已交付签名能力、持久钩子、常驻自动化、原生沙箱配置以及稳定的 ACP/JSON-RPC。"
+    },
+    "p3": {
+      "status": "已完成",
+      "title": "全渠道网关",
+      "text": "持久消息投递、ACL 配对、五个生产级渠道适配器、内容寻址媒体、语音转写以及基于 Ed25519 的设备委托均已上线。"
+    },
+    "p4": {
+      "status": "已完成",
+      "title": "产品生态",
+      "text": "已交付签名的桌面与移动客户端、发布证明、回归基准、数据迁移以及经过校验的扩展市场。"
+    }
+  },
+  "comparison": {
+    "rows": {
+      "durableMissions": "持久任务",
+      "verificationGated": "以验证为前提的完成",
+      "historicalForks": "历史会话分叉",
+      "persistentLsp": "常驻 LSP 监督",
+      "providerIndependence": "供应商独立性",
+      "localModels": "本地／离线模型",
+      "policyChecked": "经策略检查的副作用",
+      "selfHosted": "自托管的网页控制台"
+    }
+  },
+  "home": {
+    "releasePill": {
+      "badge": "新",
+      "text": "渠道无关的持久网关已上线"
+    },
+    "hero": {
+      "titleLine1": "超越",
+      "titleLine2": "提示词。",
+      "lead": "一个自主可控的 AI 工程运行时：深入规划，用真实工具执行，并持续工作直到验证全部通过。",
+      "ctaPrimary": "获取 Unknown Agent",
+      "ctaSecondary": "了解运行时",
+      "note1": "不被云端锁定",
+      "note2": "MIT 许可证",
+      "note3": "在你的代码所在之处运行"
+    },
+    "terminal": {
+      "mission": "mission / 计费门户",
+      "live": "实时",
+      "tokens": "令牌 28.4k",
+      "elapsed": "耗时 06:42",
+      "branch": "分支 main"
+    },
+    "trust": {
+      "label": "不绑定供应商",
+      "more": "另有 17 家以上"
+    },
+    "difference": {
+      "eyebrow": "差别所在",
+      "titleLine1": "这不是聊天机器人。",
+      "titleLine2": "这是能收尾的系统。",
+      "lead": "Unknown Agent 承担从一次请求到一个已验证结果之间的全部距离。"
+    },
+    "proof": {
+      "eyebrow": "要验证，不要感觉",
+      "titleLine1": "模型负责提出，",
+      "titleLine2": "运行时负责证明。",
+      "lead": "每个任务都终结于客观关卡：测试、构建、代码检查、诊断与真实浏览器流程。证据不通过，智能体就被送回循环。",
+      "item1": "理解仓库的计划，并带有明确的完成标准",
+      "item2": "隔离的 Git 工作树，保障并行执行安全",
+      "item3": "感知失败的重试机制，冻结无效循环",
+      "item4": "可回放的证据与完整的事件来源记录",
+      "loop": {
+        "ship": "交付",
+        "shipNote": "只在全绿时",
+        "plan": "规划",
+        "act": "执行",
+        "observe": "观察",
+        "verify": "验证"
+      }
+    },
+    "surfaces": {
+      "eyebrow": "一个运行时，所有入口",
+      "titleLine1": "从终端开始，",
+      "titleLine2": "在任何地方继续。",
+      "lead": "CLI、终端界面、浏览器控制台与 API 共享同一套策略、工具、会话与持久状态。",
+      "cliLabel": "CLI / TUI",
+      "codeLabel": "~/your-project",
+      "metricTools": "个原生工具",
+      "metricProviders": "家供应商",
+      "metricTests": "个测试通过",
+      "sideEyebrow": "网页控制台",
+      "sideTitle": "实时掌握你的智能体。",
+      "sideText": "在安全的浏览器控制台中流式查看推理过程、检视调用、预览产物并批准设备。",
+      "sideLink": "查看全部入口"
+    },
+    "roadmap": {
+      "eyebrow": "未来的路",
+      "title": "一个完整的智能体平台。",
+      "link": "完整路线图"
+    },
+    "cta": {
+      "eyebrow": "你的代码。你的模型。你的智能体。",
+      "titleLine1": "把工作交给",
+      "titleLine2": "真正能做完它的东西。",
+      "installLabel": "安装",
+      "primary": "开始构建",
+      "secondary": "在 GitHub 上查看"
+    }
+  },
+  "product": {
+    "hero": {
+      "eyebrow": "产品",
+      "title": "位于意图与证据之间的运行时。",
+      "lead": "Unknown Agent 将模型、代码智能、隔离执行、持久记忆与验证协调为一个连贯的工程闭环。",
+      "ctaPrimary": "安装运行时",
+      "ctaSecondary": "阅读开发者指南"
+    },
+    "loop": {
+      "eyebrow": "任务闭环"
+    },
+    "stages": {
+      "understand": {
+        "step": "01",
+        "title": "理解",
+        "text": "在改动代码之前，先梳理仓库、技术栈、约定、命令、风险以及相关的项目记忆。"
+      },
+      "plan": {
+        "step": "02",
+        "title": "规划",
+        "text": "将意图转化为带有依赖、验收标准和验证关卡的类型化、可评审的工作。"
+      },
+      "execute": {
+        "step": "03",
+        "title": "执行",
+        "text": "在任务专属的工作树中，通过策略检查后调用工具。每一次改动都可追责。"
+      },
+      "verify": {
+        "step": "04",
+        "title": "验证",
+        "text": "构建、测试、静态检查并驱动 Chromium。决定完成与否的是证据，而不是模型的自信。"
+      },
+      "recover": {
+        "step": "05",
+        "title": "恢复",
+        "text": "对失败进行归类，重新规划替代方案，并在反复没有进展时冻结循环。"
+      }
+    },
+    "sovereign": {
+      "eyebrow": "设计上即自主可控",
+      "title": "你的基础设施就是产品边界。",
+      "lead": "在本地运行，选择任意受支持的模型，把源码与遥测保留在自己的管控之下。Unknown Agent 是一套架构，而不是藏在 API 背后的租用劳力。",
+      "portableTitle": "可在供应商间迁移",
+      "portableText": "把每个阶段路由到最合适的模型。",
+      "localTitle": "本地优先",
+      "localText": "Ollama 与离线运行都是一等公民。",
+      "policyTitle": "强制执行策略",
+      "policyText": "工具无法绕过权限层。",
+      "openTitle": "开源",
+      "openText": "在 MIT 许可证下审阅整个运行时。"
+    },
+    "shared": {
+      "eyebrow": "共享状态",
+      "title": "一个智能体，四种进入方式。"
+    },
+    "surfaces": {
+      "terminal": {
+        "title": "终端",
+        "text": "快速且自适应的 TUI，支持流式输出、模型切换、命令面板和适合管道的纯净输出。"
+      },
+      "web": {
+        "title": "Web 控制台",
+        "text": "自托管的控制平面，支持实时工具检查、产物预览和设备配对。"
+      },
+      "pythonApi": {
+        "title": "Python API",
+        "text": "用于嵌入运行时、任务引擎、供应商和策略层的类型化原语。"
+      },
+      "events": {
+        "title": "事件流",
+        "text": "面向可观测性、恢复、外部自动化和审计的持久任务事件。"
+      }
+    },
+    "cta": {
+      "title": "看看这个运行时能做到什么。",
+      "button": "探索各项能力"
+    }
+  },
+  "capabilities": {
+    "hero": {
+      "eyebrow": "能力",
+      "title": "认真的工作，配得上认真的工具。",
+      "lead": "每一项能力都被构建为带类型、懂策略的基础单元，可测试、可观测、可取消、可组合。"
+    },
+    "stack": {
+      "eyebrow": "完整技术栈",
+      "title": "每一层都有深度。",
+      "lead": "这不是一份提示词清单，而是一组可互操作的运行时系统。"
+    },
+    "groups": {
+      "codeIntelligence": {
+        "name": "代码智能",
+        "i1": "常驻的多语言 LSP 监督进程",
+        "i2": "定义、引用与工作区符号",
+        "i3": "支持重启恢复的诊断能力",
+        "i4": "理解 AST 的搜索与结构化编辑"
+      },
+      "autonomousExecution": {
+        "name": "自主执行",
+        "i1": "持久的任务 DAG",
+        "i2": "按角色专精的子智能体",
+        "i3": "归属于任务的 Git 工作树",
+        "i4": "通过进程组实现取消"
+      },
+      "reasoningControl": {
+        "name": "推理控制",
+        "i1": "按阶段动态调整的思考预算",
+        "i2": "供应商原生的提示词缓存",
+        "i3": "基于 Pydantic v2 的类型化决策",
+        "i4": "停滞检测与强制重新规划"
+      },
+      "evidenceSafety": {
+        "name": "证据与安全",
+        "i1": "构建、测试与代码检查关卡",
+        "i2": "无头 Chromium 验证",
+        "i3": "默认拒绝的路径策略",
+        "i4": "仅追加的事件遥测"
+      },
+      "durableMemory": {
+        "name": "持久记忆",
+        "i1": "工作、会话与项目三层记忆",
+        "i2": "基于事件溯源的会话分叉",
+        "i3": "哈希链完整性校验",
+        "i4": "合并冲突的语义预览"
+      },
+      "providerFabric": {
+        "name": "供应商矩阵",
+        "i1": "21 个供应商适配器",
+        "i2": "OpenAI 与 Anthropic 原生 API",
+        "i3": "OpenRouter 及兼容网关",
+        "i4": "Ollama 与离线回退"
+      }
+    },
+    "cta": {
+      "title": "把完整运行时装进你的机器。",
+      "button": "下载 Unknown Agent"
+    }
+  },
+  "security": {
+    "hero": {
+      "eyebrow": "安全",
+      "title": "拥有自主性，不交出控制权。",
+      "lead": "自主性越强，薄弱边界的代价就越高。Unknown Agent 把策略、来源追溯与取消机制当作运行时的基础，而不是可有可无的外壳。",
+      "badgeTitle": "开放的安全模型",
+      "badgeText": "源码可审查 · MIT 许可证 · 自托管控制台"
+    },
+    "controls": {
+      "policy": {
+        "title": "先策略，后副作用",
+        "text": "每个工具都要声明风险等级，并在修改文件、启动进程或访问网络之前通过集中的策略判定。"
+      },
+      "filesystem": {
+        "title": "受限的文件系统",
+        "text": "规范化路径校验与拒绝规则确保所有变更都发生在明确允许的根目录内。"
+      },
+      "secrets": {
+        "title": "凭据卫生",
+        "text": "凭据引用以严格权限单独存放；日志与界面都会对敏感值做脱敏处理。"
+      },
+      "process": {
+        "title": "进程隔离",
+        "text": "默认不经 shell 执行，配合超时与进程组取消，避免产生孤儿负载。"
+      },
+      "audit": {
+        "title": "可审计的历史",
+        "text": "任务与会话事件保留身份、因果关系、输入、输出以及加密完整性链接。"
+      },
+      "access": {
+        "title": "受控访问",
+        "text": "网页控制台采用轮换的 Bearer 令牌、区分角色的会话，以及显式的六位数字设备配对。"
+      },
+      "extensions": {
+        "title": "签名扩展",
+        "text": "Ed25519 清单在导入代码之前，先绑定发布者信任、精确的源码哈希、运行时兼容性、权限与已声明的能力。"
+      },
+      "hooks": {
+        "title": "受控钩子",
+        "text": "运行时钩子在超时、重试、熔断与死信边界内接收脱敏事件；格式错误的输出无法中断任务。"
+      },
+      "automation": {
+        "title": "签名自动化",
+        "text": "Webhook 密钥始终以引用形式存在；恒定时间的 HMAC 校验、幂等键、带过期的租约、有上限的重试以及哈希链接的审计记录共同约束自主调度。"
+      },
+      "sandbox": {
+        "title": "原生隔离",
+        "text": "工作区与隔离配置使用平台原生的进程、挂载与网络边界；当后端不可用时，强制模式会以拒绝方式失败。"
+      },
+      "acp": {
+        "title": "受限的 ACP",
+        "text": "ACP 会话采用严格的 JSON-RPC 模式、限定在项目内的工作目录、原子化的私有元数据、并发取消，以及每个请求五分钟的上限。"
+      },
+      "messaging": {
+        "title": "受控消息处理",
+        "text": "入站投递在持久化之前完成去重与脱敏；完整性校验、租约、有上限的重试与事务化发件箱共同约束渠道故障。"
+      }
+    },
+    "threat": {
+      "eyebrow": "威胁模型",
+      "title": "默认输出可能是错的。",
+      "lead": "模型文本、工具参数、外部页面与子进程输出都视为不可信。类型化校验与权限边界会在这些格式错误或带有恶意的输出变成副作用之前将其拦住。",
+      "flow1": "不可信的意图",
+      "flow2": "模式校验",
+      "flow3": "策略判定",
+      "flow4": "受限执行",
+      "flow5": "留痕的证据"
+    },
+    "reporting": {
+      "eyebrow": "漏洞报告",
+      "title": "发现了安全漏洞？",
+      "lead": "请使用私密漏洞报告渠道，而不要提交公开议题。请附上复现步骤、受影响的版本以及可能造成的影响。",
+      "button": "私密报告",
+      "cardLabel": "SECURITY.md",
+      "cardText": "我们的披露流程、受支持版本与响应预期，都与源码存放在一起。",
+      "cardLink": "阅读安全政策 →"
+    }
+  },
+  "developers": {
+    "hero": {
+      "eyebrow": "开发者",
+      "title": "三条命令，从零到验证通过。",
+      "lead": "把它作为隔离的 Python 应用安装，选择你的模型供应商，并以客观的完成标准交付任务。"
+    },
+    "tabs": {
+      "quick": "快速开始",
+      "verify": "规划与验证",
+      "web": "控制台"
+    },
+    "install": {
+      "eyebrow": "安装",
+      "titleLine1": "以 Python 为先。",
+      "titleLine2": "不挑项目。",
+      "lead": "使用 pipx 或 uv 进行隔离安装。随后 Unknown Agent 会识别每个仓库真实的工具链，而不是强加一套。",
+      "recommended": "推荐",
+      "fastPath": "快捷方式"
+    },
+    "reference": {
+      "eyebrow": "参考文档",
+      "title": "在运行时之上构建。",
+      "config": {
+        "title": "配置",
+        "text": "模型供应商、配置档、策略与项目本地设置。"
+      },
+      "toolApi": {
+        "title": "工具 API",
+        "text": "类型化的工具契约、上下文、风险等级与结果。"
+      },
+      "missionEngine": {
+        "title": "任务引擎",
+        "text": "持久计划、子任务、重试、事件与恢复。"
+      },
+      "webApi": {
+        "title": "网页 API",
+        "text": "FastAPI 端点、WebSocket 事件与设备会话。"
+      },
+      "plugins": {
+        "title": "插件",
+        "text": "无需修改内核即可打包并注册扩展。"
+      },
+      "contributing": {
+        "title": "参与贡献",
+        "text": "开发环境、测试、代码风格与拉取请求。"
+      }
+    },
+    "cta": {
+      "title": "想先看看代码？",
+      "button": "浏览源代码"
+    }
+  },
+  "download": {
+    "hero": {
+      "eyebrow": "下载",
+      "title": "把智能体放到代码所在的地方。",
+      "lead": "Unknown Agent 运行在你自己的机器或基础设施上。没有专有守护进程，没有强制的云端工作区，也不会上传源代码。",
+      "ctaPrimary": "最新版本",
+      "ctaSecondary": "源代码"
+    },
+    "pipx": {
+      "recommended": "推荐",
+      "title": "使用 pipx 安装",
+      "textBefore": "让 Unknown Agent 及其依赖与系统 Python 相互隔离，同时把",
+      "textAfter": "暴露为全局命令。",
+      "thenRun": "然后运行",
+      "setupLabel": "引导式配置",
+      "setupText": "配置面板会校验你的模型供应商、拉取可用模型、安全保存凭据，并在最后执行一次连接检查。"
+    },
+    "platforms": {
+      "eyebrow": "平台",
+      "title": "你的系统，你来决定。",
+      "linux": {
+        "name": "Linux",
+        "status": "主要平台",
+        "text": "pipx、uv 或托管 venv"
+      },
+      "macos": {
+        "name": "macOS",
+        "status": "完整支持",
+        "text": "pipx、uv 或标准 venv"
+      },
+      "windows": {
+        "name": "Windows",
+        "status": "支持 PowerShell",
+        "text": "通过 py 启动器使用 pipx"
+      },
+      "req1": "需要 Python 3.11 及以上",
+      "req2": "Git 2.30 及以上",
+      "req3": "可选：Node.js、Chromium、Docker"
+    },
+    "installer": {
+      "eyebrow": "安全安装脚本",
+      "title": "更想要引导式的 shell 安装？",
+      "lead": "先下载、查看，再运行仓库中的安装脚本。它从不使用 sudo，从不写入你的主目录之外，并支持干净卸载。",
+      "label": "先下载"
+    },
+    "client": {
+      "eyebrow": "桌面 + 移动端",
+      "title": "安装安全客户端。",
+      "lead": "可以立即使用内置的加密 PWA，也可以从 Releases 下载签名的 Electron、Android 与 iOS 安装包。原生版本共用同一套经过审计的离线运行时和签名注册协议。",
+      "button": "原生版本",
+      "label": "内置客户端"
+    },
+    "cta": {
+      "title": "在选择模型供应商上需要帮助？",
+      "button": "打开快速开始"
+    }
+  },
+  "compare": {
+    "hero": {
+      "eyebrow": "对比",
+      "title": "选择一个运行时，而不是又一个聊天窗口。",
+      "lead": "Unknown Agent 围绕持久执行与证据来设计。任务越长、风险越高、并行度越大，这种区别就越重要。"
+    },
+    "table": {
+      "capability": "能力",
+      "unknownAgent": "Unknown Agent",
+      "cloudAgent": "云端编码智能体",
+      "chatTools": "聊天 + 工具",
+      "included": "支持",
+      "limited": "有限",
+      "note": "基于各家通常公开的产品能力所做的类别级对比。厂商功能会变化，请结合自身需求评估。"
+    },
+    "scenarios": {
+      "eyebrow": "适用场景",
+      "title": "为那些不能停留在“看起来没问题”的工作而生。",
+      "migrations": {
+        "title": "长周期迁移",
+        "text": "持久检查点与可恢复任务，让耗时数小时的仓库改造变得可以撑下来。"
+      },
+      "regulated": {
+        "title": "受监管的代码",
+        "text": "本地执行、策略关卡与可回放的来源记录，让运维人员始终掌握控制权。"
+      },
+      "parallel": {
+        "title": "并行交付",
+        "text": "归属于任务的工作树隔离各个智能体，语义预览让合并过程清晰可读。"
+      }
+    },
+    "cta": {
+      "title": "用你自己的代码来检验差别。",
+      "button": "安装 Unknown Agent"
+    }
+  },
+  "roadmap": {
+    "hero": {
+      "eyebrow": "路线图",
+      "title": "从编码智能体到自主可控的智能体平台。",
+      "lead": "分阶段推进，确保在下一层叠加之前，每一层都好用、可测试且已达到投产水准。"
+    },
+    "map": {
+      "eyebrow": "交付地图",
+      "title": "每个阶段包含什么。"
+    },
+    "detail": {
+      "foundation": {
+        "title": "基础阶段已交付",
+        "i1": "类型化推理协议",
+        "i2": "持久任务引擎",
+        "i3": "AST 与仓库智能",
+        "i4": "供应商路由与提示词缓存",
+        "i5": "网页控制台与事件流"
+      },
+      "codingCore": {
+        "title": "编码内核已交付",
+        "i1": "常驻 LSP 工具",
+        "i2": "与任务关联的 Git 工作树",
+        "i3": "基于事件溯源的会话分叉",
+        "i4": "分层上下文压缩",
+        "i5": "事务化变更队列"
+      },
+      "extensible": {
+        "title": "可扩展运行时 — 已交付",
+        "i1": "签名的能力清单",
+        "i2": "钩子与事件总线",
+        "i3": "持久 cron 与签名 Webhook 调度器",
+        "i4": "跨平台原生沙箱配置",
+        "i5": "稳定的 JSON-RPC / ACP v1 服务"
+      },
+      "omnichannel": {
+        "title": "全渠道与生态 — 已完成",
+        "i1": "渠道无关的持久网关 — 已交付",
+        "i2": "五个消息适配器、媒体、语音与设备委托 — 已交付",
+        "i3": "供应链、基准测试与扩展市场 — 已交付",
+        "i4": "加密的桌面与移动 PWA — 已交付",
+        "i5": "Electron、Android 与 iOS 的签名发布流水线 — 已交付"
+      }
+    },
+    "principle": {
+      "eyebrow": "工作准则",
+      "title": "拒绝做样子的对勾。",
+      "lead": "路线图上的条目只有在具备类型化契约、副作用前的权限检查、持久状态、真正的取消能力、遥测、格式错误输出的隔离处理，以及针对失败路径的专项测试之后，才算交付。",
+      "button": "关注开发进展"
+    }
+  },
+  "company": {
+    "hero": {
+      "eyebrow": "关于",
+      "title": "软件智能体应当是可问责的系统。",
+      "lead": "Unknown Agent 是一项开放的工程实践，致力于让自主软件变得持久、可验证且自主可控。"
+    },
+    "mission": {
+      "eyebrow": "我们的目标",
+      "title": "把模型的智能，转化为可靠的执行。",
+      "lead": "模型在快速进步，但围绕它们的系统仍会丢失状态、重复昂贵的工作、越过边界，并过早宣布成功。Unknown Agent 要构建的，正是弥合这道缝隙的运行时层。"
+    },
+    "principles": {
+      "eyebrow": "原则",
+      "title": "我们为什么而优化。",
+      "proof": {
+        "title": "证明重于表现",
+        "text": "一个令人信服的回答，不等于能跑起来的软件。我们为客观证据而优化。"
+      },
+      "sovereignty": {
+        "title": "自主重于便利",
+        "text": "你的代码、模型、凭据与执行环境，都应当留在你自己的掌控之中。"
+      },
+      "systems": {
+        "title": "系统重于演示",
+        "text": "持久性、取消、回滚与格式错误输出的处理，在最初五分钟之后才真正见分晓。"
+      },
+      "open": {
+        "title": "开放重于黑箱",
+        "text": "这个运行时可审查、可扩展，并采用 MIT 许可证。信任是可以被验证的。"
+      }
+    },
+    "build": {
+      "eyebrow": "一起来构建",
+      "title": "开放的运行时，在开放中变得更好。",
+      "lead": "审阅架构、反馈问题、改进某个适配器、补上一个有针对性的测试，或者提出一项新能力。",
+      "primary": "打开 GitHub",
+      "secondary": "贡献指南"
+    }
+  },
+  "changelog": {
+    "hero": {
+      "eyebrow": "更新日志",
+      "title": "改了什么，以及为什么重要。",
+      "lead": "以可读方式记录运行时的重要改进。提交级别的历史仍可在仓库中查阅。"
+    },
+    "historyLink": "查看完整提交历史 →",
+    "untranslatedNotice": "此条目尚未翻译成{language}，现以英文显示。",
+    "untranslatedLabel": "英文",
+    "entryCount": "暂无条目 | {count} 个条目 | {count} 个条目",
+    "entries": {
+      "hardening": {
+        "date": "当前",
+        "version": "平台加固",
+        "title": "零警告的校验基线",
+        "items": [
+          "已将弃用的 pathspec 匹配迁移到 GitIgnoreSpec",
+          "更新了 multipart 与 HTTP 测试客户端的集成方式",
+          "修正了凭据持久化相关的回归断言",
+          "937 个测试通过，输出中没有任何警告"
+        ]
+      },
+      "nativeEcosystem": {
+        "date": "阶段 4 完成",
+        "version": "原生生态",
+        "title": "带签名的原生产品生态",
+        "items": [
+          "面向 Linux、macOS 与 Windows 的 Electron 安装包",
+          "支持应用商店签名的 Capacitor Android 与 iOS 工程",
+          "跨平台 CI 构建，以及出错即拒绝的发布凭据",
+          "原生校验和、SPDX 格式 SBOM 与签名的 SLSA 来源证明"
+        ]
+      },
+      "packagedClient": {
+        "date": "阶段 4.6",
+        "version": "打包客户端",
+        "title": "打包客户端的分发",
+        "items": [
+          "ua client 直接提供内置的生产版 PWA 与同步 API",
+          "为远程与移动访问提供原生 TLS 证书支持",
+          "签名注册、同步与重放拒绝的端到端测试",
+          "Python 包发布中已包含预构建产物"
+        ]
+      },
+      "installableClient": {
+        "date": "阶段 4.5",
+        "version": "可安装客户端",
+        "title": "可安装的桌面与移动 PWA",
+        "items": [
+          "支持离线的响应式收件箱、消息与审批界面",
+          "不可导出的 WebCrypto 身份与加密的 IndexedDB 状态",
+          "签名的设备注册与持久的同步 API 端点",
+          "安装清单与基于 Service Worker 的离线外壳"
+        ]
+      },
+      "clientRuntime": {
+        "date": "阶段 4.4",
+        "version": "客户端运行时",
+        "title": "桌面与移动端的安全客户端运行时",
+        "items": [
+          "使用 ChaCha20-Poly1305 加密的离线状态",
+          "幂等的操作队列与原子化的游标同步",
+          "基于 Ed25519 的设备签名 HTTPS 传输，并限制重试次数",
+          "持久的远程审批与经过认证的事件历史"
+        ]
+      }
+    }
+  },
+  "notFound": {
+    "code": "404 / 未知路由",
+    "title": "这个分支并不存在。",
+    "text": "页面可能已经移动，也可能是这次任务拐错了弯。",
+    "button": "返回首页"
+  }
+}
